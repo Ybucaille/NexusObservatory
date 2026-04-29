@@ -192,7 +192,7 @@ It reports whether each provider is available and configured. For OpenAI-compati
 
 ## Demo Data
 
-Seed realistic local demo runs for portfolio screenshots:
+Seed realistic local demo runs:
 
 ```bash
 cd apps/api
