@@ -19,6 +19,7 @@ from app.services.execution import execute_run
 from app.services.provider_status import get_provider_status
 from app.services.runs import create_run, get_run, list_runs
 from app.services.traces import create_trace_event, list_trace_events
+from app.scripts.seed_demo_data import seed_demo_data
 
 
 class RunsServiceTests(unittest.TestCase):
@@ -256,6 +257,41 @@ class RunsServiceTests(unittest.TestCase):
         self.assertTrue(openai_status.api_key_configured)
         self.assertEqual(openai_status.default_model, "gpt-test")
         self.assertNotIn("secret-test-key", str(serialized))
+
+    def test_seed_demo_data_replaces_only_demo_runs_and_creates_traces(self) -> None:
+        user_run = create_run(
+            RunCreate(
+                prompt="Keep this user-created run.",
+                response="This should not be deleted by demo seeding.",
+                model_name="manual-model",
+                provider="manual",
+                metadata={"source": "manual"},
+            )
+        )
+
+        first_deleted, first_created = seed_demo_data()
+        second_deleted, second_created = seed_demo_data()
+
+        runs = list_runs()
+        demo_runs = [
+            run for run in runs if run.metadata.get("source") == "demo-seed"
+        ]
+        preserved_user_run = get_run(user_run.id)
+
+        self.assertEqual(first_deleted, 0)
+        self.assertEqual(first_created, 7)
+        self.assertEqual(second_deleted, 7)
+        self.assertEqual(second_created, 7)
+        self.assertEqual(len(demo_runs), 7)
+        self.assertIsNotNone(preserved_user_run)
+        self.assertEqual(preserved_user_run.prompt, "Keep this user-created run.")
+        self.assertGreaterEqual(
+            len([run for run in demo_runs if run.status == "success"]),
+            6,
+        )
+        self.assertEqual(len([run for run in demo_runs if run.status == "error"]), 1)
+        for run in demo_runs:
+            self.assertGreaterEqual(len(list_trace_events(run.id)), 5)
 
     def test_openai_compatible_provider_parses_chat_completion_response(self) -> None:
         provider = OpenAICompatibleProvider()

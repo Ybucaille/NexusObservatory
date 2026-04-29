@@ -190,6 +190,20 @@ It reports whether each provider is available and configured. For OpenAI-compati
 6. Compare mock and OpenAI-compatible providers in Model Lab.
 7. Check provider status in Settings.
 
+## Demo Data
+
+Seed realistic local demo runs for portfolio screenshots:
+
+```bash
+cd apps/api
+source .venv/bin/activate
+python -m app.scripts.seed_demo_data
+```
+
+The script creates successful and failed runs across `mock` and `openai_compatible` providers, including trace events for Run Detail pages.
+
+It is safe to run multiple times. Existing rows seeded by this script are replaced, and user-created non-demo runs are preserved.
+
 ## Validation
 
 Backend:
