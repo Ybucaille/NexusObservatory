@@ -148,8 +148,9 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
       <p className="mt-3 text-xs leading-5 text-observatory-muted">
         OpenAI-compatible providers are configured on the backend with
         `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
-        `OPENAI_COMPATIBLE_DEFAULT_MODEL`. API keys are never sent to the
-        frontend.
+        `OPENAI_COMPATIBLE_DEFAULT_MODEL`. The default UI model is `gpt-4o-mini`;
+        replace it with any model supported by your OpenAI-compatible backend.
+        API keys are never sent to the frontend.
       </p>
 
       {state.status === "error" ? (
@@ -174,5 +175,5 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
 }
 
 function getDefaultModel(provider: ExecuteRunPayload["provider"]): string {
-  return provider === "mock" ? "mock-model" : "openai-compatible-default";
+  return provider === "mock" ? "mock-model" : "gpt-4o-mini";
 }
