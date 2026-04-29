@@ -39,3 +39,25 @@ class RunResponse(RunCreate):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class RunCompareTarget(BaseModel):
+    provider: str = Field(..., min_length=1)
+    model: str = ""
+
+
+class RunCompareRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    targets: list[RunCompareTarget] = Field(..., min_length=1)
+
+
+class RunCompareItem(BaseModel):
+    provider: str
+    model: str
+    status: RunStatus
+    run: RunResponse | None = None
+    error_message: str | None = None
+
+
+class RunCompareResponse(BaseModel):
+    results: list[RunCompareItem]

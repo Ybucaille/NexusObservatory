@@ -35,6 +35,28 @@ export type ExecuteRunPayload = {
   model: string;
 };
 
+export type CompareTarget = {
+  provider: ExecuteRunPayload["provider"];
+  model: string;
+};
+
+export type CompareRunsPayload = {
+  prompt: string;
+  targets: CompareTarget[];
+};
+
+export type CompareResult = {
+  provider: string;
+  model: string;
+  status: "success" | "error";
+  run: Run | null;
+  error_message: string | null;
+};
+
+export type CompareRunsResponse = {
+  results: CompareResult[];
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 function getApiBaseUrl(): string {
@@ -111,6 +133,25 @@ export async function executeRun(payload: ExecuteRunPayload): Promise<Run> {
   }
 
   return response.json() as Promise<Run>;
+}
+
+export async function compareRuns(
+  payload: CompareRunsPayload,
+): Promise<CompareRunsResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/runs/compare`, {
+    body: JSON.stringify(payload),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to compare runs."));
+  }
+
+  return response.json() as Promise<CompareRunsResponse>;
 }
 
 async function readApiError(

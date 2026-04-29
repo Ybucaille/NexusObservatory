@@ -10,8 +10,11 @@ from app.providers.base import ProviderConfigError
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate
+from app.schemas.run import RunCompareRequest
+from app.schemas.run import RunCompareTarget
 from app.schemas.run import RunExecuteRequest
 from app.schemas.trace_event import TraceEventCreate
+from app.services.comparison import compare_runs
 from app.services.execution import execute_run
 from app.services.runs import create_run, get_run, list_runs
 from app.services.traces import create_trace_event, list_trace_events
@@ -120,6 +123,60 @@ class RunsServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(executed.model_name, "mock-model")
+
+    def test_compare_runs_with_mock_targets_stores_each_success(self) -> None:
+        comparison = compare_runs(
+            RunCompareRequest(
+                prompt="Compare this prompt.",
+                targets=[
+                    RunCompareTarget(provider="mock", model="mock-model"),
+                    RunCompareTarget(provider="mock", model="mock-alt"),
+                ],
+            )
+        )
+
+        self.assertEqual(len(comparison.results), 2)
+        self.assertTrue(all(result.status == "success" for result in comparison.results))
+        self.assertEqual(
+            sorted(run.model_name for run in list_runs()),
+            ["mock-alt", "mock-model"],
+        )
+        for result in comparison.results:
+            self.assertIsNotNone(result.run)
+            self.assertGreaterEqual(len(list_trace_events(result.run.id)), 5)
+
+    def test_compare_runs_returns_partial_error_for_missing_openai_config(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_COMPATIBLE_BASE_URL": "",
+                "OPENAI_COMPATIBLE_API_KEY": "",
+            },
+            clear=False,
+        ):
+            comparison = compare_runs(
+                RunCompareRequest(
+                    prompt="Compare mock and configured providers.",
+                    targets=[
+                        RunCompareTarget(provider="mock", model="mock-model"),
+                        RunCompareTarget(
+                            provider="openai_compatible",
+                            model="gpt-4o-mini",
+                        ),
+                    ],
+                )
+            )
+
+        self.assertEqual(len(comparison.results), 2)
+        self.assertEqual(comparison.results[0].status, "success")
+        self.assertIsNotNone(comparison.results[0].run)
+        self.assertEqual(comparison.results[1].status, "error")
+        self.assertIsNone(comparison.results[1].run)
+        self.assertIn(
+            "OPENAI_COMPATIBLE_BASE_URL is required",
+            comparison.results[1].error_message or "",
+        )
+        self.assertEqual(len(list_runs()), 1)
 
     def test_execute_run_rejects_unsupported_provider(self) -> None:
         with self.assertRaisesRegex(

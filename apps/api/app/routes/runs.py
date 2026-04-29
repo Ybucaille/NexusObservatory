@@ -2,8 +2,15 @@ from fastapi import APIRouter, HTTPException, Path, status
 
 from app.providers.base import ProviderCallError, ProviderConfigError
 from app.providers.registry import UnsupportedProviderError
-from app.schemas.run import RunCreate, RunExecuteRequest, RunResponse
+from app.schemas.run import (
+    RunCompareRequest,
+    RunCompareResponse,
+    RunCreate,
+    RunExecuteRequest,
+    RunResponse,
+)
 from app.schemas.trace_event import TraceEventResponse
+from app.services.comparison import compare_runs
 from app.services.execution import execute_run
 from app.services.runs import create_run, get_run, list_runs
 from app.services.traces import list_trace_events
@@ -42,6 +49,11 @@ async def execute_run_route(payload: RunExecuteRequest) -> RunResponse:
         ) from exc
 
     return RunResponse.model_validate(run)
+
+
+@router.post("/compare", response_model=RunCompareResponse)
+async def compare_runs_route(payload: RunCompareRequest) -> RunCompareResponse:
+    return compare_runs(payload)
 
 
 @router.get("/{run_id}/trace", response_model=list[TraceEventResponse])

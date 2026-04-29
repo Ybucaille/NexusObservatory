@@ -5,7 +5,7 @@ const navItems: Array<{ label: string; href: string }> = [
   { label: "Dashboard", href: "/" },
   { label: "Runs", href: "/runs" },
   { label: "Trace Explorer", href: "#" },
-  { label: "Model Lab", href: "#" },
+  { label: "Model Lab", href: "/lab" },
   { label: "Settings", href: "#" },
 ];
 
