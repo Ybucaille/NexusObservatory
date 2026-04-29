@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchRun, fetchRunTrace, type Run, type TraceEvent } from "@/lib/api";
@@ -24,6 +25,8 @@ type TraceLoadState =
   | { status: "ready"; events: TraceEvent[]; error: null }
   | { status: "error"; events: TraceEvent[]; error: string };
 
+type CopyTarget = "metadata" | "prompt" | "response";
+
 export function RunDetailContent() {
   const params = useParams<{ id: string }>();
   const runId = useMemo(() => Number(params.id), [params.id]);
@@ -37,6 +40,7 @@ export function RunDetailContent() {
     events: [],
     error: null,
   });
+  const [copiedTarget, setCopiedTarget] = useState<CopyTarget | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(runId) || runId <= 0) {
@@ -116,6 +120,35 @@ export function RunDetailContent() {
   }
 
   const run = state.run;
+  const metadataJson = JSON.stringify(run.metadata, null, 2);
+
+  async function handleCopy(target: CopyTarget, value: string) {
+    await copyText(value);
+    setCopiedTarget(target);
+    window.setTimeout(() => {
+      setCopiedTarget((currentTarget) =>
+        currentTarget === target ? null : currentTarget,
+      );
+    }, 1800);
+  }
+
+  function handleExportJson() {
+    const exportData =
+      traceState.status === "ready"
+        ? { ...run, trace_events: traceState.events }
+        : run;
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `nexus-run-${run.id}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="space-y-6">
@@ -135,7 +168,16 @@ export function RunDetailContent() {
               {run.prompt}
             </p>
           </div>
-          <StatusBadge status={run.status} />
+          <div className="flex flex-col items-start gap-3 sm:items-end">
+            <StatusBadge status={run.status} />
+            <button
+              className="rounded-2xl border border-observatory-cyan/35 bg-observatory-cyan/10 px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-observatory-cyan transition hover:bg-observatory-cyan/15 hover:text-white"
+              onClick={handleExportJson}
+              type="button"
+            >
+              Export JSON
+            </button>
+          </div>
         </div>
       </section>
 
@@ -157,8 +199,27 @@ export function RunDetailContent() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <TextBlock label="Prompt" value={run.prompt} />
         <TextBlock
+          action={
+            <CopyButton
+              copied={copiedTarget === "prompt"}
+              label="Copy prompt"
+              onClick={() => handleCopy("prompt", run.prompt)}
+            />
+          }
+          label="Prompt"
+          value={run.prompt}
+        />
+        <TextBlock
+          action={
+            run.response?.trim() ? (
+              <CopyButton
+                copied={copiedTarget === "response"}
+                label="Copy response"
+                onClick={() => handleCopy("response", run.response ?? "")}
+              />
+            ) : null
+          }
           label="Response"
           mutedValue="No response was recorded for this run."
           value={run.response}
@@ -176,11 +237,18 @@ export function RunDetailContent() {
       />
 
       <section className="rounded-3xl border border-observatory-line bg-observatory-panel/80 p-6">
-        <p className="font-mono text-xs uppercase tracking-[0.25em] text-observatory-muted">
-          Metadata
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-observatory-muted">
+            Metadata
+          </p>
+          <CopyButton
+            copied={copiedTarget === "metadata"}
+            label="Copy metadata"
+            onClick={() => handleCopy("metadata", metadataJson)}
+          />
+        </div>
         <pre className="mt-4 max-h-96 overflow-auto rounded-2xl border border-observatory-line bg-observatory-ink/80 p-4 text-sm leading-7 text-observatory-muted">
-          {JSON.stringify(run.metadata, null, 2)}
+          {metadataJson}
         </pre>
       </section>
     </div>
@@ -227,11 +295,13 @@ function TimestampMetric({ label, value }: { label: string; value: string }) {
 }
 
 function TextBlock({
+  action,
   label,
   mutedValue,
   tone = "default",
   value,
 }: {
+  action?: ReactNode;
   label: string;
   mutedValue?: string;
   tone?: "default" | "error";
@@ -248,19 +318,59 @@ function TextBlock({
           : "border-observatory-line bg-observatory-panel/80",
       ].join(" ")}
     >
-      <p
-        className={[
-          "font-mono text-xs uppercase tracking-[0.25em]",
-          tone === "error" ? "text-red-200" : "text-observatory-muted",
-        ].join(" ")}
-      >
-        {label}
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p
+          className={[
+            "font-mono text-xs uppercase tracking-[0.25em]",
+            tone === "error" ? "text-red-200" : "text-observatory-muted",
+          ].join(" ")}
+        >
+          {label}
+        </p>
+        {action}
+      </div>
       <pre className="mt-4 whitespace-pre-wrap break-words rounded-2xl border border-observatory-line bg-observatory-ink/80 p-4 text-sm leading-7 text-observatory-text">
         {displayValue}
       </pre>
     </section>
   );
+}
+
+function CopyButton({
+  copied,
+  label,
+  onClick,
+}: {
+  copied: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="rounded-2xl border border-observatory-line bg-observatory-panelSoft px-3 py-2 font-mono text-xs uppercase tracking-[0.14em] text-observatory-muted transition hover:border-observatory-cyan/50 hover:text-white"
+      onClick={onClick}
+      type="button"
+    >
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 function RunDetailLoadingState() {
