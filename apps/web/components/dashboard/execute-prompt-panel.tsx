@@ -30,7 +30,7 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
     event.preventDefault();
 
     const trimmedPrompt = prompt.trim();
-    const trimmedModel = model.trim() || "mock-model";
+    const trimmedModel = model.trim() || getDefaultModel(provider);
 
     if (!trimmedPrompt) {
       setState({
@@ -75,15 +75,15 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
             Execute Prompt
           </p>
           <h3 className="mt-2 text-xl font-semibold tracking-tight">
-            Run a mock AI execution
+            Run an AI execution
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-observatory-muted">
-            Send a prompt through the local mock provider and store the result
-            as an observable run.
+            Send a prompt through a configured provider and store the result as
+            an observable run.
           </p>
         </div>
         <div className="rounded-full border border-observatory-line bg-observatory-panelSoft px-3 py-1.5 font-mono text-xs text-observatory-muted">
-          mock only
+          mock or OpenAI-compatible
         </div>
       </div>
 
@@ -109,12 +109,16 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
             <select
               className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition focus:border-observatory-cyan/60"
               disabled={isLoading}
-              onChange={(event) =>
-                setProvider(event.target.value as ExecuteRunPayload["provider"])
-              }
+              onChange={(event) => {
+                const nextProvider = event.target
+                  .value as ExecuteRunPayload["provider"];
+                setProvider(nextProvider);
+                setModel(getDefaultModel(nextProvider));
+              }}
               value={provider}
             >
               <option value="mock">mock</option>
+              <option value="openai_compatible">openai_compatible</option>
             </select>
           </label>
 
@@ -126,7 +130,7 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
               className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition placeholder:text-observatory-muted/60 focus:border-observatory-cyan/60"
               disabled={isLoading}
               onChange={(event) => setModel(event.target.value)}
-              placeholder="mock-model"
+              placeholder={getDefaultModel(provider)}
               value={model}
             />
           </label>
@@ -140,6 +144,13 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
           </button>
         </div>
       </form>
+
+      <p className="mt-3 text-xs leading-5 text-observatory-muted">
+        OpenAI-compatible providers are configured on the backend with
+        `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
+        `OPENAI_COMPATIBLE_DEFAULT_MODEL`. API keys are never sent to the
+        frontend.
+      </p>
 
       {state.status === "error" ? (
         <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-950/20 px-4 py-3 text-sm text-red-100/85">
@@ -160,4 +171,8 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
       ) : null}
     </section>
   );
+}
+
+function getDefaultModel(provider: ExecuteRunPayload["provider"]): string {
+  return provider === "mock" ? "mock-model" : "openai-compatible-default";
 }

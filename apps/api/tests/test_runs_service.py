@@ -1,9 +1,13 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app import database
 from app.database import init_database
+from app.providers.base import ProviderConfigError
+from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate
 from app.schemas.run import RunExecuteRequest
@@ -71,6 +75,16 @@ class RunsServiceTests(unittest.TestCase):
         self.assertIn("Mock response from mock-model", executed.response or "")
         self.assertEqual(executed.metadata["mock"], True)
 
+    def test_execute_run_with_mock_provider_uses_default_model(self) -> None:
+        executed = execute_run(
+            RunExecuteRequest(
+                prompt="Summarize an AI run.",
+                provider="mock",
+            )
+        )
+
+        self.assertEqual(executed.model_name, "mock-model")
+
     def test_execute_run_rejects_unsupported_provider(self) -> None:
         with self.assertRaisesRegex(
             UnsupportedProviderError,
@@ -83,6 +97,88 @@ class RunsServiceTests(unittest.TestCase):
                     model="gpt-test",
                 )
             )
+
+    def test_openai_compatible_provider_requires_configuration(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_COMPATIBLE_BASE_URL": "",
+                "OPENAI_COMPATIBLE_API_KEY": "",
+            },
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                ProviderConfigError,
+                "OPENAI_COMPATIBLE_BASE_URL is required",
+            ):
+                execute_run(
+                    RunExecuteRequest(
+                        prompt="Use configured provider.",
+                        provider="openai_compatible",
+                        model="gpt-test",
+                    )
+                )
+
+    def test_openai_compatible_provider_parses_chat_completion_response(self) -> None:
+        provider = OpenAICompatibleProvider()
+        response_body = {
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "created": 123,
+            "model": "returned-model",
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Real provider response.",
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 3,
+                "total_tokens": 7,
+            },
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_COMPATIBLE_BASE_URL": "http://provider.local/v1",
+                "OPENAI_COMPATIBLE_API_KEY": "test-key",
+                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "default-model",
+            },
+            clear=False,
+        ), patch(
+            "app.providers.openai_compatible.urlopen",
+            return_value=_FakeResponse(response_body),
+        ) as urlopen_mock:
+            result = provider.generate(prompt="Say hello.", model="")
+
+        request = urlopen_mock.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "http://provider.local/v1/chat/completions")
+        self.assertEqual(payload["model"], "default-model")
+        self.assertEqual(payload["messages"][0]["content"], "Say hello.")
+        self.assertEqual(result.response, "Real provider response.")
+        self.assertEqual(result.model_name, "returned-model")
+        self.assertEqual(result.input_tokens, 4)
+        self.assertEqual(result.output_tokens, 3)
+        self.assertEqual(result.total_tokens, 7)
+
+
+class _FakeResponse:
+    def __init__(self, body: dict[str, object]) -> None:
+        self.body = body
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.body).encode("utf-8")
 
 
 if __name__ == "__main__":

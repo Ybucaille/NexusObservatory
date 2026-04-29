@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Path, status
 
+from app.providers.base import ProviderCallError, ProviderConfigError
 from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate, RunExecuteRequest, RunResponse
 from app.services.execution import execute_run
@@ -25,6 +26,16 @@ async def execute_run_route(payload: RunExecuteRequest) -> RunResponse:
     except UnsupportedProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ProviderConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ProviderCallError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
 

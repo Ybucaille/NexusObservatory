@@ -5,6 +5,7 @@ from typing import Any, Protocol
 @dataclass(slots=True)
 class ProviderResult:
     response: str
+    model_name: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
@@ -16,3 +17,15 @@ class Provider(Protocol):
 
     def generate(self, prompt: str, model: str) -> ProviderResult:
         pass
+
+
+class ProviderError(RuntimeError):
+    pass
+
+
+class ProviderConfigError(ProviderError):
+    pass
+
+
+class ProviderCallError(ProviderError):
+    pass

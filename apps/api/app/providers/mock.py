@@ -5,9 +5,10 @@ class MockProvider:
     name = "mock"
 
     def generate(self, prompt: str, model: str) -> ProviderResult:
+        selected_model = model.strip() or "mock-model"
         normalized_prompt = " ".join(prompt.split())
         response = (
-            f"Mock response from {model}: I received your prompt and would "
+            f"Mock response from {selected_model}: I received your prompt and would "
             f"analyze it as an AI run. Prompt summary: {normalized_prompt[:160]}"
         )
         input_tokens = _estimate_tokens(prompt)
@@ -15,13 +16,14 @@ class MockProvider:
 
         return ProviderResult(
             response=response,
+            model_name=selected_model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
             metadata={
                 "mock": True,
                 "provider": self.name,
-                "model": model,
+                "model": selected_model,
             },
         )
 

@@ -30,7 +30,7 @@ class RunCreate(BaseModel):
 class RunExecuteRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
     provider: str = Field(default="mock", min_length=1)
-    model: str = Field(default="mock-model", min_length=1)
+    model: str = ""
 
 
 class RunResponse(RunCreate):

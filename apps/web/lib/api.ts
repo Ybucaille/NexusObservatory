@@ -20,7 +20,7 @@ export type Run = {
 
 export type ExecuteRunPayload = {
   prompt: string;
-  provider: "mock";
+  provider: "mock" | "openai_compatible";
   model: string;
 };
 

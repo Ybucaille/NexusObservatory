@@ -17,7 +17,7 @@ def execute_run(payload: RunExecuteRequest) -> Run:
         RunCreate(
             prompt=payload.prompt,
             response=result.response,
-            model_name=payload.model,
+            model_name=result.model_name or payload.model,
             provider=payload.provider,
             status="success",
             latency_ms=latency_ms,
