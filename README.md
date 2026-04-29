@@ -6,27 +6,21 @@ It is designed as a portfolio-grade product: a polished dashboard backed by real
 
 ## Product Preview
 
-Product screenshots are planned for the portfolio release.
-
 ### Dashboard
 
-_Screenshot placeholder._
+![Dashboard](docs/screenshots/dashboard.png)
 
-### Run Detail
+### Run Detail & Trace Timeline
 
-_Screenshot placeholder._
-
-### Trace Timeline
-
-_Screenshot placeholder._
+![Run detail and trace timeline](docs/screenshots/trace-timeline.png)
 
 ### Model Lab
 
-_Screenshot placeholder._
+![Model Lab](docs/screenshots/model-lab.png)
 
 ### Provider Settings
 
-_Screenshot placeholder._
+![Provider Settings](docs/screenshots/settings.png)
 
 ## What It Does
 
