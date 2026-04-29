@@ -33,3 +33,6 @@ dist/
 
 # Local AI workspace
 .ai/
+
+.env.local
+.env.*.local
