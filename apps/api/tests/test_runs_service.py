@@ -11,8 +11,10 @@ from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate
 from app.schemas.run import RunExecuteRequest
+from app.schemas.trace_event import TraceEventCreate
 from app.services.execution import execute_run
 from app.services.runs import create_run, get_run, list_runs
+from app.services.traces import create_trace_event, list_trace_events
 
 
 class RunsServiceTests(unittest.TestCase):
@@ -58,6 +60,30 @@ class RunsServiceTests(unittest.TestCase):
     def test_get_missing_run_returns_none(self) -> None:
         self.assertIsNone(get_run(999))
 
+    def test_create_and_list_trace_events(self) -> None:
+        run = create_run(
+            RunCreate(
+                prompt="Trace this run.",
+                response="Traced.",
+                model_name="manual-test-model",
+                provider="manual",
+            )
+        )
+        trace_event = create_trace_event(
+            TraceEventCreate(
+                run_id=run.id,
+                type="request_received",
+                title="Request received",
+                message="The API received a request.",
+                metadata={"source": "unit-test"},
+            )
+        )
+
+        trace_events = list_trace_events(run.id)
+        self.assertEqual(len(trace_events), 1)
+        self.assertEqual(trace_events[0], trace_event)
+        self.assertEqual(trace_events[0].metadata, {"source": "unit-test"})
+
     def test_execute_run_with_mock_provider_stores_run(self) -> None:
         executed = execute_run(
             RunExecuteRequest(
@@ -74,6 +100,16 @@ class RunsServiceTests(unittest.TestCase):
         self.assertGreaterEqual(executed.latency_ms or 0, 0)
         self.assertIn("Mock response from mock-model", executed.response or "")
         self.assertEqual(executed.metadata["mock"], True)
+        self.assertEqual(
+            [trace_event.type for trace_event in list_trace_events(executed.id)],
+            [
+                "request_received",
+                "provider_selected",
+                "provider_call_started",
+                "provider_call_finished",
+                "run_stored",
+            ],
+        )
 
     def test_execute_run_with_mock_provider_uses_default_model(self) -> None:
         executed = execute_run(

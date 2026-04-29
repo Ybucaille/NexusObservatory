@@ -44,4 +44,19 @@ def init_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trace_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                duration_ms INTEGER,
+                metadata TEXT NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+            )
+            """
+        )
         connection.commit()

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchRun, type Run } from "@/lib/api";
+import { fetchRun, fetchRunTrace, type Run, type TraceEvent } from "@/lib/api";
 import {
   formatCompactDateTime,
   formatDateTime,
@@ -12,11 +12,17 @@ import {
   formatTokens,
 } from "./run-format";
 import { StatusBadge } from "./status-badge";
+import { TraceTimeline } from "./trace-timeline";
 
 type LoadState =
   | { status: "loading"; run: null; error: null }
   | { status: "ready"; run: Run; error: null }
   | { status: "error"; run: null; error: string };
+
+type TraceLoadState =
+  | { status: "loading"; events: TraceEvent[]; error: null }
+  | { status: "ready"; events: TraceEvent[]; error: null }
+  | { status: "error"; events: TraceEvent[]; error: string };
 
 export function RunDetailContent() {
   const params = useParams<{ id: string }>();
@@ -24,6 +30,11 @@ export function RunDetailContent() {
   const [state, setState] = useState<LoadState>({
     status: "loading",
     run: null,
+    error: null,
+  });
+  const [traceState, setTraceState] = useState<TraceLoadState>({
+    status: "loading",
+    events: [],
     error: null,
   });
 
@@ -34,12 +45,20 @@ export function RunDetailContent() {
         run: null,
         error: "Run id must be a positive integer.",
       });
+      setTraceState({
+        status: "error",
+        events: [],
+        error: "Trace cannot be loaded without a valid run id.",
+      });
       return;
     }
 
     const controller = new AbortController();
 
     async function loadRun() {
+      setState({ status: "loading", run: null, error: null });
+      setTraceState({ status: "loading", events: [], error: null });
+
       try {
         const run = await fetchRun(runId, controller.signal);
         setState({ status: "ready", run, error: null });
@@ -54,7 +73,31 @@ export function RunDetailContent() {
           error:
             error instanceof Error
               ? error.message
-              : "Unable to load this run from the API.",
+            : "Unable to load this run from the API.",
+        });
+        setTraceState({
+          status: "error",
+          events: [],
+          error: "Trace cannot be loaded because the run failed to load.",
+        });
+        return;
+      }
+
+      try {
+        const events = await fetchRunTrace(runId, controller.signal);
+        setTraceState({ status: "ready", events, error: null });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTraceState({
+          status: "error",
+          events: [],
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to load trace events from the API.",
         });
       }
     }
@@ -125,6 +168,12 @@ export function RunDetailContent() {
       {run.error_message ? (
         <TextBlock label="Error" tone="error" value={run.error_message} />
       ) : null}
+
+      <TraceTimeline
+        error={traceState.error ?? undefined}
+        events={traceState.events}
+        status={traceState.status}
+      />
 
       <section className="rounded-3xl border border-observatory-line bg-observatory-panel/80 p-6">
         <p className="font-mono text-xs uppercase tracking-[0.25em] text-observatory-muted">

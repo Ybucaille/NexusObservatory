@@ -18,6 +18,17 @@ export type Run = {
   metadata: Record<string, unknown>;
 };
 
+export type TraceEvent = {
+  id: number;
+  run_id: number;
+  created_at: string;
+  type: string;
+  title: string;
+  message: string;
+  duration_ms: number | null;
+  metadata: Record<string, unknown>;
+};
+
 export type ExecuteRunPayload = {
   prompt: string;
   provider: "mock" | "openai_compatible";
@@ -65,6 +76,24 @@ export async function fetchRun(
   }
 
   return response.json() as Promise<Run>;
+}
+
+export async function fetchRunTrace(
+  runId: number,
+  signal?: AbortSignal,
+): Promise<TraceEvent[]> {
+  const response = await fetch(`${getApiBaseUrl()}/runs/${runId}/trace`, {
+    headers: {
+      Accept: "application/json",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to load trace for run ${runId}: ${response.status}`);
+  }
+
+  return response.json() as Promise<TraceEvent[]>;
 }
 
 export async function executeRun(payload: ExecuteRunPayload): Promise<Run> {
