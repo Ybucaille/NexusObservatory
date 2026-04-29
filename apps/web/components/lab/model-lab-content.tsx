@@ -344,11 +344,23 @@ function ResultCard({
   index: number;
   result: CompareResult;
 }) {
+  const [copied, setCopied] = useState(false);
   const run = result.run;
   const response = run?.response || "No response text was returned.";
+  const hasResponse = Boolean(run?.response?.trim());
   const model = run?.model_name || result.model || "default";
   const provider = run?.provider || result.provider;
   const providerLabel = formatProviderLabel(provider);
+
+  async function handleCopyResponse() {
+    if (!run?.response) {
+      return;
+    }
+
+    await copyText(run.response);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
 
   return (
     <article className="min-w-0 rounded-3xl border border-observatory-line bg-observatory-panel/80 p-5">
@@ -382,9 +394,20 @@ function ResultCard({
           </div>
 
           <div className="mt-5 rounded-2xl border border-observatory-line bg-observatory-ink/60 p-4">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-observatory-muted">
-              Response
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-observatory-muted">
+                Response
+              </p>
+              {hasResponse ? (
+                <button
+                  className="rounded-2xl border border-observatory-line bg-observatory-panelSoft px-3 py-2 font-mono text-xs uppercase tracking-[0.14em] text-observatory-muted transition hover:border-observatory-cyan/50 hover:text-white"
+                  onClick={handleCopyResponse}
+                  type="button"
+                >
+                  {copied ? "Copied" : "Copy response"}
+                </button>
+              ) : null}
+            </div>
             <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-observatory-text">
               {response}
             </pre>
@@ -422,4 +445,21 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function getDefaultModel(provider: ExecuteRunPayload["provider"]): string {
   return provider === "mock" ? "mock-model" : "gpt-4o-mini";
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
