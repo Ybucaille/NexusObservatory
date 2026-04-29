@@ -100,6 +100,9 @@ export function ModelLabContent() {
   }
 
   const isLoading = state.status === "loading";
+  const hasOpenAICompatibleTarget = targets.some(
+    (target) => target.provider === "openai_compatible",
+  );
 
   return (
     <div className="space-y-6">
@@ -143,8 +146,9 @@ export function ModelLabContent() {
                   Targets
                 </p>
                 <p className="mt-1 text-xs leading-5 text-observatory-muted">
-                  OpenAI-compatible targets require backend environment config.
-                  API keys stay server-side.
+                  {hasOpenAICompatibleTarget
+                    ? "OpenAI-compatible targets require backend environment config. API keys stay server-side."
+                    : "Mock targets run locally and do not require backend provider configuration."}
                 </p>
               </div>
               <button
@@ -221,9 +225,9 @@ export function ModelLabContent() {
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-5 text-observatory-muted">
-              Replace `gpt-4o-mini` with any model supported by your
-              OpenAI-compatible backend. Missing config or unavailable models
-              return as target-level errors.
+              {hasOpenAICompatibleTarget
+                ? "Replace `gpt-4o-mini` with any model supported by your OpenAI-compatible backend. Missing config or unavailable models return as target-level errors."
+                : "Mock comparisons are fully local and useful for testing Model Lab flow without provider credentials."}
             </p>
             <button
               className="rounded-2xl border border-observatory-cyan/40 bg-observatory-cyan/10 px-5 py-3 font-mono text-xs uppercase tracking-[0.18em] text-observatory-cyan transition hover:bg-observatory-cyan/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
