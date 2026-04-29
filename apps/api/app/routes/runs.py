@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Path, status
 
-from app.schemas.run import RunCreate, RunResponse
+from app.providers.registry import UnsupportedProviderError
+from app.schemas.run import RunCreate, RunExecuteRequest, RunResponse
+from app.services.execution import execute_run
 from app.services.runs import create_run, get_run, list_runs
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -14,6 +16,19 @@ async def create_run_route(payload: RunCreate) -> RunResponse:
 @router.get("", response_model=list[RunResponse])
 async def list_runs_route() -> list[RunResponse]:
     return [RunResponse.model_validate(run) for run in list_runs()]
+
+
+@router.post("/execute", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
+async def execute_run_route(payload: RunExecuteRequest) -> RunResponse:
+    try:
+        run = execute_run(payload)
+    except UnsupportedProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return RunResponse.model_validate(run)
 
 
 @router.get("/{run_id}", response_model=RunResponse)

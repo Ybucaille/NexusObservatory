@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchRuns, type Run } from "@/lib/api";
+import { ExecutePromptPanel } from "@/components/dashboard/execute-prompt-panel";
 import { RunsTable } from "@/components/runs/runs-table";
 
 type LoadState =
@@ -24,30 +25,29 @@ export function DashboardContent() {
     error: null,
   });
 
+  async function loadRuns(signal?: AbortSignal) {
+    try {
+      const runs = await fetchRuns(signal);
+      setState({ status: "ready", runs, error: null });
+    } catch (error) {
+      if (signal?.aborted) {
+        return;
+      }
+
+      setState({
+        status: "error",
+        runs: [],
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load runs from the API.",
+      });
+    }
+  }
+
   useEffect(() => {
     const controller = new AbortController();
-
-    async function loadRuns() {
-      try {
-        const runs = await fetchRuns(controller.signal);
-        setState({ status: "ready", runs, error: null });
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setState({
-          status: "error",
-          runs: [],
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unable to load runs from the API.",
-        });
-      }
-    }
-
-    void loadRuns();
+    void loadRuns(controller.signal);
 
     return () => controller.abort();
   }, []);
@@ -65,6 +65,8 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-6">
+      <ExecutePromptPanel onExecuted={() => loadRuns()} />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {metrics.map((metric) => (
           <MetricCardView card={metric} key={metric.label} />

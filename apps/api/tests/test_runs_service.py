@@ -4,7 +4,10 @@ from pathlib import Path
 
 from app import database
 from app.database import init_database
+from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate
+from app.schemas.run import RunExecuteRequest
+from app.services.execution import execute_run
 from app.services.runs import create_run, get_run, list_runs
 
 
@@ -50,6 +53,36 @@ class RunsServiceTests(unittest.TestCase):
 
     def test_get_missing_run_returns_none(self) -> None:
         self.assertIsNone(get_run(999))
+
+    def test_execute_run_with_mock_provider_stores_run(self) -> None:
+        executed = execute_run(
+            RunExecuteRequest(
+                prompt="Summarize an AI run.",
+                provider="mock",
+                model="mock-model",
+            )
+        )
+
+        self.assertEqual(executed.id, 1)
+        self.assertEqual(executed.provider, "mock")
+        self.assertEqual(executed.model_name, "mock-model")
+        self.assertEqual(executed.status, "success")
+        self.assertGreaterEqual(executed.latency_ms or 0, 0)
+        self.assertIn("Mock response from mock-model", executed.response or "")
+        self.assertEqual(executed.metadata["mock"], True)
+
+    def test_execute_run_rejects_unsupported_provider(self) -> None:
+        with self.assertRaisesRegex(
+            UnsupportedProviderError,
+            "Unsupported provider 'openai'",
+        ):
+            execute_run(
+                RunExecuteRequest(
+                    prompt="Use a real provider.",
+                    provider="openai",
+                    model="gpt-test",
+                )
+            )
 
 
 if __name__ == "__main__":

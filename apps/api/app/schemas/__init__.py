@@ -1,3 +1,3 @@
-from app.schemas.run import RunCreate, RunResponse, RunStatus
+from app.schemas.run import RunCreate, RunExecuteRequest, RunResponse, RunStatus
 
-__all__ = ["RunCreate", "RunResponse", "RunStatus"]
+__all__ = ["RunCreate", "RunExecuteRequest", "RunResponse", "RunStatus"]

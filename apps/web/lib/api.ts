@@ -18,6 +18,12 @@ export type Run = {
   metadata: Record<string, unknown>;
 };
 
+export type ExecuteRunPayload = {
+  prompt: string;
+  provider: "mock";
+  model: string;
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 function getApiBaseUrl(): string {
@@ -59,4 +65,37 @@ export async function fetchRun(
   }
 
   return response.json() as Promise<Run>;
+}
+
+export async function executeRun(payload: ExecuteRunPayload): Promise<Run> {
+  const response = await fetch(`${getApiBaseUrl()}/runs/execute`, {
+    body: JSON.stringify(payload),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Failed to execute run."));
+  }
+
+  return response.json() as Promise<Run>;
+}
+
+async function readApiError(
+  response: Response,
+  fallbackMessage: string,
+): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") {
+      return body.detail;
+    }
+  } catch {
+    return `${fallbackMessage} Status: ${response.status}`;
+  }
+
+  return `${fallbackMessage} Status: ${response.status}`;
 }

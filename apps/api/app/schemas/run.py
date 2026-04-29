@@ -27,6 +27,12 @@ class RunCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class RunExecuteRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    provider: str = Field(default="mock", min_length=1)
+    model: str = Field(default="mock-model", min_length=1)
+
+
 class RunResponse(RunCreate):
     model_config = ConfigDict(from_attributes=True)
 
