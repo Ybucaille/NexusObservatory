@@ -16,6 +16,7 @@ from app.schemas.run import RunExecuteRequest
 from app.schemas.trace_event import TraceEventCreate
 from app.services.comparison import compare_runs
 from app.services.execution import execute_run
+from app.services.provider_status import get_provider_status
 from app.services.runs import create_run, get_run, list_runs
 from app.services.traces import create_trace_event, list_trace_events
 
@@ -211,6 +212,50 @@ class RunsServiceTests(unittest.TestCase):
                         model="gpt-test",
                     )
                 )
+
+    def test_provider_status_reports_missing_openai_config_without_secret(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_COMPATIBLE_BASE_URL": "",
+                "OPENAI_COMPATIBLE_API_KEY": "",
+                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "",
+            },
+            clear=False,
+        ):
+            status = get_provider_status()
+
+        providers = {provider.name: provider for provider in status.providers}
+        self.assertTrue(providers["mock"].available)
+        self.assertTrue(providers["mock"].configured)
+        self.assertEqual(providers["mock"].default_model, "mock-model")
+        self.assertTrue(providers["openai_compatible"].available)
+        self.assertFalse(providers["openai_compatible"].configured)
+        self.assertFalse(providers["openai_compatible"].base_url_configured)
+        self.assertFalse(providers["openai_compatible"].api_key_configured)
+        self.assertIsNone(providers["openai_compatible"].default_model)
+
+    def test_provider_status_reports_configured_openai_without_secret_value(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_COMPATIBLE_BASE_URL": "http://provider.local/v1",
+                "OPENAI_COMPATIBLE_API_KEY": "secret-test-key",
+                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "gpt-test",
+            },
+            clear=False,
+        ):
+            status = get_provider_status()
+
+        openai_status = {
+            provider.name: provider for provider in status.providers
+        }["openai_compatible"]
+        serialized = openai_status.model_dump()
+        self.assertTrue(openai_status.configured)
+        self.assertTrue(openai_status.base_url_configured)
+        self.assertTrue(openai_status.api_key_configured)
+        self.assertEqual(openai_status.default_model, "gpt-test")
+        self.assertNotIn("secret-test-key", str(serialized))
 
     def test_openai_compatible_provider_parses_chat_completion_response(self) -> None:
         provider = OpenAICompatibleProvider()

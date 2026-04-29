@@ -6,7 +6,7 @@ const navItems: Array<{ label: string; href: string }> = [
   { label: "Runs", href: "/runs" },
   { label: "Trace Explorer", href: "#" },
   { label: "Model Lab", href: "/lab" },
-  { label: "Settings", href: "#" },
+  { label: "Settings", href: "/settings" },
 ];
 
 type DashboardShellProps = {

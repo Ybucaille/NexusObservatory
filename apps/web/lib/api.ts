@@ -57,6 +57,19 @@ export type CompareRunsResponse = {
   results: CompareResult[];
 };
 
+export type ProviderStatus = {
+  name: string;
+  available: boolean;
+  configured: boolean;
+  default_model: string | null;
+  base_url_configured: boolean | null;
+  api_key_configured: boolean | null;
+};
+
+export type ProviderStatusResponse = {
+  providers: ProviderStatus[];
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 function getApiBaseUrl(): string {
@@ -152,6 +165,23 @@ export async function compareRuns(
   }
 
   return response.json() as Promise<CompareRunsResponse>;
+}
+
+export async function fetchProviderStatus(
+  signal?: AbortSignal,
+): Promise<ProviderStatusResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/providers/status`, {
+    headers: {
+      Accept: "application/json",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to load provider status: ${response.status}`);
+  }
+
+  return response.json() as Promise<ProviderStatusResponse>;
 }
 
 async function readApiError(
