@@ -1,5 +1,8 @@
 .env
 .env.*
+!.env.example
+.ai
+.codex
 .venv/
 venv/
 __pycache__/
@@ -8,3 +11,23 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Local AI workspace
+.ai/
