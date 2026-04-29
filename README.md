@@ -32,7 +32,7 @@ _Screenshot placeholder._
 
 Nexus Observatory helps developers inspect AI executions in one place:
 
-- Execute prompts through a local mock provider or an OpenAI-compatible backend.
+- Execute prompts through a local mock provider or a custom OpenAI-compatible endpoint.
 - Persist AI executions as inspectable runs.
 - Track latency, token usage, provider, model, prompt, response and metadata.
 - Inspect individual runs with a trace timeline.
@@ -47,7 +47,7 @@ Nexus Observatory helps developers inspect AI executions in one place:
 - **Trace timeline**: execution steps such as request received, provider selected, provider call started, provider call finished and run stored.
 - **Prompt execution**: compact dashboard panel for running prompts and storing results.
 - **Model Lab**: compare one prompt across multiple targets with partial success handling.
-- **Provider Settings**: read-only provider readiness cards for `mock` and `openai_compatible`.
+- **Provider Settings**: read-only provider readiness cards for `mock` and `custom_endpoint`.
 
 ## Stack
 
@@ -68,7 +68,7 @@ Backend:
 Providers:
 
 - `mock`: local/demo provider that requires no credentials.
-- `openai_compatible`: calls OpenAI-style chat completions APIs from the backend.
+- `custom_endpoint`: calls OpenAI-compatible chat completions APIs from the backend.
 
 ## Repository Structure
 
@@ -138,33 +138,37 @@ curl -X POST http://localhost:8000/runs/execute \
 
 The created run appears in the dashboard, the Runs page and the Run Detail page.
 
-## OpenAI-Compatible Provider
+## Custom Endpoint Provider
 
-The backend can call OpenAI-style chat completion APIs through `provider="openai_compatible"`.
+The backend can call any OpenAI-compatible chat completions API through `provider="custom_endpoint"`.
+
+This can target OpenAI, Ollama, LM Studio, vLLM, LocalAI or another service that exposes:
+
+```txt
+{CUSTOM_ENDPOINT_BASE_URL}/chat/completions
+```
 
 Configure these variables in the backend environment.
 
 OpenAI example:
 
 ```bash
-export OPENAI_COMPATIBLE_BASE_URL="https://api.openai.com/v1"
-export OPENAI_COMPATIBLE_API_KEY="your-api-key"
-export OPENAI_COMPATIBLE_DEFAULT_MODEL="gpt-4o-mini"
+export CUSTOM_ENDPOINT_BASE_URL="https://api.openai.com/v1"
+export CUSTOM_ENDPOINT_API_KEY="your-api-key"
+export CUSTOM_ENDPOINT_DEFAULT_MODEL="gpt-4o-mini"
 ```
 
-Local OpenAI-compatible backend example:
+Ollama example:
 
 ```bash
-export OPENAI_COMPATIBLE_BASE_URL="http://localhost:11434/v1"
-export OPENAI_COMPATIBLE_API_KEY="ollama"
-export OPENAI_COMPATIBLE_DEFAULT_MODEL="llama3.1"
+export CUSTOM_ENDPOINT_BASE_URL="http://localhost:11434/v1"
+export CUSTOM_ENDPOINT_API_KEY="ollama"
+export CUSTOM_ENDPOINT_DEFAULT_MODEL="llama3.1"
 ```
 
-`OPENAI_COMPATIBLE_BASE_URL` should usually end at `/v1` when the provider uses OpenAI-style paths, because Nexus Observatory calls:
+`CUSTOM_ENDPOINT_BASE_URL` should usually end at `/v1` when the provider uses OpenAI-style paths.
 
-```txt
-{OPENAI_COMPATIBLE_BASE_URL}/chat/completions
-```
+For compatibility with older local setups, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY` and `OPENAI_COMPATIBLE_DEFAULT_MODEL` are still read as fallbacks when the `CUSTOM_ENDPOINT_*` variables are not set.
 
 API keys stay backend-side through environment variables. They are never stored in the database and are never exposed to the Next.js frontend.
 
@@ -178,7 +182,7 @@ The Settings page calls:
 GET /providers/status
 ```
 
-It reports whether each provider is available and configured. For OpenAI-compatible backends, it only returns booleans such as `api_key_configured`; it never returns the API key value.
+It reports whether each provider is available and configured. For custom endpoints, it only returns booleans such as `api_key_configured`; it never returns the API key value.
 
 ## Demo Flow
 
@@ -187,7 +191,7 @@ It reports whether each provider is available and configured. For OpenAI-compati
 3. Execute a mock prompt from the dashboard.
 4. Inspect the created run in the Runs page.
 5. View the trace timeline on the Run Detail page.
-6. Compare mock and OpenAI-compatible providers in Model Lab.
+6. Compare mock and custom endpoint providers in Model Lab.
 7. Check provider status in Settings.
 
 ## Demo Data
@@ -200,7 +204,7 @@ source .venv/bin/activate
 python -m app.scripts.seed_demo_data
 ```
 
-The script creates successful and failed runs across `mock` and `openai_compatible` providers, including trace events for Run Detail pages.
+The script creates successful and failed runs across `mock` and `custom_endpoint` providers, including trace events for Run Detail pages.
 
 It is safe to run multiple times. Existing rows seeded by this script are replaced, and user-created non-demo runs are preserved.
 

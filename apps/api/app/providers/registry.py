@@ -1,10 +1,10 @@
 from app.providers.base import Provider
+from app.providers.custom_endpoint import CustomEndpointProvider
 from app.providers.mock import MockProvider
-from app.providers.openai_compatible import OpenAICompatibleProvider
 
 _PROVIDERS: dict[str, Provider] = {
+    "custom_endpoint": CustomEndpointProvider(),
     "mock": MockProvider(),
-    "openai_compatible": OpenAICompatibleProvider(),
 }
 
 

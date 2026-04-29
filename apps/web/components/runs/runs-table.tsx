@@ -1,7 +1,12 @@
 import Link from "next/link";
 
 import type { Run } from "@/lib/api";
-import { formatDateTime, formatLatency, getRunTokenTotal } from "./run-format";
+import {
+  formatDateTime,
+  formatLatency,
+  formatProviderLabel,
+  getRunTokenTotal,
+} from "./run-format";
 import { StatusBadge } from "./status-badge";
 
 type RunsTableProps = {
@@ -62,7 +67,7 @@ export function RunsTable({ runs, compact = false }: RunsTableProps) {
                 className="hidden truncate px-3 py-4 text-observatory-text 2xl:table-cell xl:px-4"
                 title={run.provider}
               >
-                {run.provider}
+                {formatProviderLabel(run.provider)}
               </td>
               <td className="px-3 py-4 text-observatory-text xl:px-4">
                 <span className="block truncate" title={run.model_name}>

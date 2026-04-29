@@ -38,3 +38,14 @@ export function formatTokens(value: number | null): string {
 export function getRunTokenTotal(run: Run): number {
   return run.total_tokens ?? 0;
 }
+
+export function formatProviderLabel(provider: string): string {
+  if (provider === "custom_endpoint") {
+    return "Custom endpoint";
+  }
+  if (provider === "openai_compatible") {
+    return "OpenAI-compatible (legacy)";
+  }
+
+  return provider;
+}

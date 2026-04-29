@@ -31,7 +31,7 @@ export type TraceEvent = {
 
 export type ExecuteRunPayload = {
   prompt: string;
-  provider: "mock" | "openai_compatible";
+  provider: "mock" | "custom_endpoint";
   model: string;
 };
 

@@ -1,19 +1,23 @@
+import asyncio
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app import database
 from app.database import init_database
 from app.providers.base import ProviderConfigError
-from app.providers.openai_compatible import OpenAICompatibleProvider
+from app.providers.custom_endpoint import CustomEndpointProvider
 from app.providers.registry import UnsupportedProviderError
 from app.schemas.run import RunCreate
 from app.schemas.run import RunCompareRequest
 from app.schemas.run import RunCompareTarget
 from app.schemas.run import RunExecuteRequest
 from app.schemas.trace_event import TraceEventCreate
+from app.routes.runs import execute_run_route
 from app.services.comparison import compare_runs
 from app.services.execution import execute_run
 from app.services.provider_status import get_provider_status
@@ -147,10 +151,12 @@ class RunsServiceTests(unittest.TestCase):
             self.assertIsNotNone(result.run)
             self.assertGreaterEqual(len(list_trace_events(result.run.id)), 5)
 
-    def test_compare_runs_returns_partial_error_for_missing_openai_config(self) -> None:
+    def test_compare_runs_returns_partial_error_for_missing_custom_endpoint_config(self) -> None:
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
                 "OPENAI_COMPATIBLE_API_KEY": "",
             },
@@ -162,7 +168,7 @@ class RunsServiceTests(unittest.TestCase):
                     targets=[
                         RunCompareTarget(provider="mock", model="mock-model"),
                         RunCompareTarget(
-                            provider="openai_compatible",
+                            provider="custom_endpoint",
                             model="gpt-4o-mini",
                         ),
                     ],
@@ -175,7 +181,7 @@ class RunsServiceTests(unittest.TestCase):
         self.assertEqual(comparison.results[1].status, "error")
         self.assertIsNone(comparison.results[1].run)
         self.assertIn(
-            "OPENAI_COMPATIBLE_BASE_URL is required",
+            "CUSTOM_ENDPOINT_BASE_URL is required",
             comparison.results[1].error_message or "",
         )
         self.assertEqual(len(list_runs()), 1)
@@ -193,10 +199,12 @@ class RunsServiceTests(unittest.TestCase):
                 )
             )
 
-    def test_openai_compatible_provider_requires_configuration(self) -> None:
+    def test_custom_endpoint_provider_requires_configuration(self) -> None:
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
                 "OPENAI_COMPATIBLE_API_KEY": "",
             },
@@ -204,20 +212,48 @@ class RunsServiceTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 ProviderConfigError,
-                "OPENAI_COMPATIBLE_BASE_URL is required",
+                "CUSTOM_ENDPOINT_BASE_URL is required",
             ):
                 execute_run(
                     RunExecuteRequest(
                         prompt="Use configured provider.",
-                        provider="openai_compatible",
+                        provider="custom_endpoint",
                         model="gpt-test",
                     )
                 )
 
-    def test_provider_status_reports_missing_openai_config_without_secret(self) -> None:
+    def test_execute_run_route_returns_400_for_missing_custom_endpoint_config(self) -> None:
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
+                "OPENAI_COMPATIBLE_BASE_URL": "",
+                "OPENAI_COMPATIBLE_API_KEY": "",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(HTTPException) as context:
+                asyncio.run(
+                    execute_run_route(
+                        RunExecuteRequest(
+                            prompt="Use configured provider.",
+                            provider="custom_endpoint",
+                            model="gpt-test",
+                        )
+                    )
+                )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("CUSTOM_ENDPOINT_BASE_URL", str(context.exception.detail))
+
+    def test_provider_status_reports_missing_custom_endpoint_config_without_secret(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
+                "CUSTOM_ENDPOINT_DEFAULT_MODEL": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
                 "OPENAI_COMPATIBLE_API_KEY": "",
                 "OPENAI_COMPATIBLE_DEFAULT_MODEL": "",
@@ -230,32 +266,32 @@ class RunsServiceTests(unittest.TestCase):
         self.assertTrue(providers["mock"].available)
         self.assertTrue(providers["mock"].configured)
         self.assertEqual(providers["mock"].default_model, "mock-model")
-        self.assertTrue(providers["openai_compatible"].available)
-        self.assertFalse(providers["openai_compatible"].configured)
-        self.assertFalse(providers["openai_compatible"].base_url_configured)
-        self.assertFalse(providers["openai_compatible"].api_key_configured)
-        self.assertIsNone(providers["openai_compatible"].default_model)
+        self.assertTrue(providers["custom_endpoint"].available)
+        self.assertFalse(providers["custom_endpoint"].configured)
+        self.assertFalse(providers["custom_endpoint"].base_url_configured)
+        self.assertFalse(providers["custom_endpoint"].api_key_configured)
+        self.assertIsNone(providers["custom_endpoint"].default_model)
 
-    def test_provider_status_reports_configured_openai_without_secret_value(self) -> None:
+    def test_provider_status_reports_configured_custom_endpoint_without_secret_value(self) -> None:
         with patch.dict(
             "os.environ",
             {
-                "OPENAI_COMPATIBLE_BASE_URL": "http://provider.local/v1",
-                "OPENAI_COMPATIBLE_API_KEY": "secret-test-key",
-                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "gpt-test",
+                "CUSTOM_ENDPOINT_BASE_URL": "http://provider.local/v1",
+                "CUSTOM_ENDPOINT_API_KEY": "secret-test-key",
+                "CUSTOM_ENDPOINT_DEFAULT_MODEL": "gpt-test",
             },
             clear=False,
         ):
             status = get_provider_status()
 
-        openai_status = {
+        custom_endpoint_status = {
             provider.name: provider for provider in status.providers
-        }["openai_compatible"]
-        serialized = openai_status.model_dump()
-        self.assertTrue(openai_status.configured)
-        self.assertTrue(openai_status.base_url_configured)
-        self.assertTrue(openai_status.api_key_configured)
-        self.assertEqual(openai_status.default_model, "gpt-test")
+        }["custom_endpoint"]
+        serialized = custom_endpoint_status.model_dump()
+        self.assertTrue(custom_endpoint_status.configured)
+        self.assertTrue(custom_endpoint_status.base_url_configured)
+        self.assertTrue(custom_endpoint_status.api_key_configured)
+        self.assertEqual(custom_endpoint_status.default_model, "gpt-test")
         self.assertNotIn("secret-test-key", str(serialized))
 
     def test_seed_demo_data_replaces_only_demo_runs_and_creates_traces(self) -> None:
@@ -293,8 +329,8 @@ class RunsServiceTests(unittest.TestCase):
         for run in demo_runs:
             self.assertGreaterEqual(len(list_trace_events(run.id)), 5)
 
-    def test_openai_compatible_provider_parses_chat_completion_response(self) -> None:
-        provider = OpenAICompatibleProvider()
+    def test_custom_endpoint_provider_parses_chat_completion_response(self) -> None:
+        provider = CustomEndpointProvider()
         response_body = {
             "id": "chatcmpl-test",
             "object": "chat.completion",
@@ -318,13 +354,13 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "OPENAI_COMPATIBLE_BASE_URL": "http://provider.local/v1",
-                "OPENAI_COMPATIBLE_API_KEY": "test-key",
-                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "default-model",
+                "CUSTOM_ENDPOINT_BASE_URL": "http://provider.local/v1",
+                "CUSTOM_ENDPOINT_API_KEY": "test-key",
+                "CUSTOM_ENDPOINT_DEFAULT_MODEL": "default-model",
             },
             clear=False,
         ), patch(
-            "app.providers.openai_compatible.urlopen",
+            "app.providers.custom_endpoint.urlopen",
             return_value=_FakeResponse(response_body),
         ) as urlopen_mock:
             result = provider.generate(prompt="Say hello.", model="")
@@ -339,6 +375,37 @@ class RunsServiceTests(unittest.TestCase):
         self.assertEqual(result.input_tokens, 4)
         self.assertEqual(result.output_tokens, 3)
         self.assertEqual(result.total_tokens, 7)
+
+    def test_custom_endpoint_provider_supports_old_env_fallback(self) -> None:
+        provider = CustomEndpointProvider()
+        response_body = {
+            "model": "fallback-model",
+            "choices": [{"message": {"content": "Fallback response."}}],
+            "usage": {},
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
+                "CUSTOM_ENDPOINT_DEFAULT_MODEL": "",
+                "OPENAI_COMPATIBLE_BASE_URL": "http://fallback.local/v1",
+                "OPENAI_COMPATIBLE_API_KEY": "fallback-key",
+                "OPENAI_COMPATIBLE_DEFAULT_MODEL": "fallback-default",
+            },
+            clear=False,
+        ), patch(
+            "app.providers.custom_endpoint.urlopen",
+            return_value=_FakeResponse(response_body),
+        ) as urlopen_mock:
+            result = provider.generate(prompt="Say hello.", model="")
+
+        request = urlopen_mock.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "http://fallback.local/v1/chat/completions")
+        self.assertEqual(payload["model"], "fallback-default")
+        self.assertEqual(result.response, "Fallback response.")
 
 
 class _FakeResponse:

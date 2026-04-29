@@ -7,6 +7,7 @@ import {
   type ProviderStatus,
   type ProviderStatusResponse,
 } from "@/lib/api";
+import { formatProviderLabel } from "@/components/runs/run-format";
 
 type LoadState =
   | { status: "loading"; data: null; error: null }
@@ -94,7 +95,7 @@ export function SettingsContent() {
 }
 
 function ProviderCard({ provider }: { provider: ProviderStatus }) {
-  const isOpenAICompatible = provider.name === "openai_compatible";
+  const isCustomEndpoint = provider.name === "custom_endpoint";
 
   return (
     <article className="rounded-3xl border border-observatory-line bg-observatory-panel/80 p-5">
@@ -130,7 +131,7 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
         />
       </div>
 
-      {isOpenAICompatible ? (
+      {isCustomEndpoint ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <ConfigCheck
             configured={Boolean(provider.base_url_configured)}
@@ -144,8 +145,8 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
       ) : null}
 
       <p className="mt-5 text-sm leading-6 text-observatory-muted">
-        {isOpenAICompatible
-          ? "Set OpenAI-compatible environment variables on the backend. Secret values are intentionally omitted from this response."
+        {isCustomEndpoint
+          ? "Set custom endpoint environment variables on the backend. The endpoint uses an OpenAI-compatible chat completions API for OpenAI, Ollama, LM Studio, vLLM or LocalAI. Secret values are intentionally omitted from this response."
           : "The mock provider runs locally and is always ready for demos and UI validation."}
       </p>
     </article>
@@ -254,5 +255,5 @@ function SettingsErrorState({ message }: { message: string }) {
 }
 
 function formatProviderName(name: string): string {
-  return name === "openai_compatible" ? "openai_compatible" : name;
+  return formatProviderLabel(name);
 }

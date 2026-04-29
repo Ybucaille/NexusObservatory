@@ -10,7 +10,11 @@ import {
   type ExecuteRunPayload,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/runs/status-badge";
-import { formatLatency, formatTokens } from "@/components/runs/run-format";
+import {
+  formatLatency,
+  formatProviderLabel,
+  formatTokens,
+} from "@/components/runs/run-format";
 
 type TargetDraft = CompareTarget & {
   id: string;
@@ -25,8 +29,8 @@ type SubmitState =
 const defaultTargets: TargetDraft[] = [
   { id: "mock-default", provider: "mock", model: "mock-model" },
   {
-    id: "openai-compatible-default",
-    provider: "openai_compatible",
+    id: "custom-endpoint-default",
+    provider: "custom_endpoint",
     model: "gpt-4o-mini",
   },
 ];
@@ -100,8 +104,8 @@ export function ModelLabContent() {
   }
 
   const isLoading = state.status === "loading";
-  const hasOpenAICompatibleTarget = targets.some(
-    (target) => target.provider === "openai_compatible",
+  const hasCustomEndpointTarget = targets.some(
+    (target) => target.provider === "custom_endpoint",
   );
 
   return (
@@ -121,7 +125,7 @@ export function ModelLabContent() {
             </p>
           </div>
           <div className="rounded-full border border-observatory-line bg-observatory-panelSoft px-3 py-1.5 font-mono text-xs text-observatory-muted">
-            mock + OpenAI-compatible
+            mock + custom endpoint
           </div>
         </div>
 
@@ -146,8 +150,8 @@ export function ModelLabContent() {
                   Targets
                 </p>
                 <p className="mt-1 text-xs leading-5 text-observatory-muted">
-                  {hasOpenAICompatibleTarget
-                    ? "OpenAI-compatible targets require backend environment config. API keys stay server-side."
+                  {hasCustomEndpointTarget
+                    ? "Custom endpoint targets require backend environment config. They use an OpenAI-compatible chat completions API, and API keys stay server-side."
                     : "Mock targets run locally and do not require backend provider configuration."}
                 </p>
               </div>
@@ -183,9 +187,7 @@ export function ModelLabContent() {
                       value={target.provider}
                     >
                       <option value="mock">mock</option>
-                      <option value="openai_compatible">
-                        openai_compatible
-                      </option>
+                      <option value="custom_endpoint">Custom endpoint</option>
                     </select>
                   </label>
 
@@ -225,8 +227,8 @@ export function ModelLabContent() {
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-5 text-observatory-muted">
-              {hasOpenAICompatibleTarget
-                ? "Replace `gpt-4o-mini` with any model supported by your OpenAI-compatible backend. Missing config or unavailable models return as target-level errors."
+              {hasCustomEndpointTarget
+                ? "Replace `gpt-4o-mini` with any model supported by your custom endpoint, such as OpenAI, Ollama, LM Studio, vLLM or LocalAI. Missing config or unavailable models return as target-level errors."
                 : "Mock comparisons are fully local and useful for testing Model Lab flow without provider credentials."}
             </p>
             <button
@@ -316,7 +318,7 @@ function ComparisonResults({
         </h3>
         <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-observatory-muted">
           Start with the mock provider for a local baseline, then compare it
-          with configured OpenAI-compatible targets.
+          with configured custom endpoints.
         </p>
       </section>
     );
@@ -346,6 +348,7 @@ function ResultCard({
   const response = run?.response || "No response text was returned.";
   const model = run?.model_name || result.model || "default";
   const provider = run?.provider || result.provider;
+  const providerLabel = formatProviderLabel(provider);
 
   return (
     <article className="min-w-0 rounded-3xl border border-observatory-line bg-observatory-panel/80 p-5">
@@ -356,9 +359,9 @@ function ResultCard({
           </p>
           <h3
             className="mt-2 truncate text-lg font-semibold tracking-tight"
-            title={`${provider} / ${model}`}
+            title={`${providerLabel} / ${model}`}
           >
-            {provider} / {model}
+            {providerLabel} / {model}
           </h3>
         </div>
         <StatusBadge status={result.status} />

@@ -83,7 +83,7 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
           </p>
         </div>
         <div className="rounded-full border border-observatory-line bg-observatory-panelSoft px-3 py-1.5 font-mono text-xs text-observatory-muted">
-          mock or OpenAI-compatible
+          mock or custom endpoint
         </div>
       </div>
 
@@ -118,7 +118,7 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
               value={provider}
             >
               <option value="mock">mock</option>
-              <option value="openai_compatible">openai_compatible</option>
+              <option value="custom_endpoint">Custom endpoint</option>
             </select>
           </label>
 
@@ -146,11 +146,11 @@ export function ExecutePromptPanel({ onExecuted }: ExecutePromptPanelProps) {
       </form>
 
       <p className="mt-3 text-xs leading-5 text-observatory-muted">
-        OpenAI-compatible providers are configured on the backend with
-        `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
-        `OPENAI_COMPATIBLE_DEFAULT_MODEL`. The default UI model is `gpt-4o-mini`;
-        replace it with any model supported by your OpenAI-compatible backend.
-        API keys are never sent to the frontend.
+        Custom endpoints are configured on the backend with
+        `CUSTOM_ENDPOINT_BASE_URL`, `CUSTOM_ENDPOINT_API_KEY`, and
+        `CUSTOM_ENDPOINT_DEFAULT_MODEL`. They use an OpenAI-compatible chat
+        completions API and can target OpenAI, Ollama, LM Studio, vLLM or
+        LocalAI. API keys are never sent to the frontend.
       </p>
 
       {state.status === "error" ? (

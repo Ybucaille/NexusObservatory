@@ -7,23 +7,24 @@ from urllib.request import Request, urlopen
 from app.providers.base import ProviderCallError, ProviderConfigError, ProviderResult
 
 
-class OpenAICompatibleProvider:
-    name = "openai_compatible"
+class CustomEndpointProvider:
+    name = "custom_endpoint"
 
     def generate(self, prompt: str, model: str) -> ProviderResult:
         base_url = _require_config(
-            os.getenv("OPENAI_COMPATIBLE_BASE_URL"),
-            "OPENAI_COMPATIBLE_BASE_URL",
+            _get_config("CUSTOM_ENDPOINT_BASE_URL", "OPENAI_COMPATIBLE_BASE_URL"),
+            "CUSTOM_ENDPOINT_BASE_URL",
         )
         api_key = _require_config(
-            os.getenv("OPENAI_COMPATIBLE_API_KEY"),
-            "OPENAI_COMPATIBLE_API_KEY",
+            _get_config("CUSTOM_ENDPOINT_API_KEY", "OPENAI_COMPATIBLE_API_KEY"),
+            "CUSTOM_ENDPOINT_API_KEY",
         )
         selected_model = (
             model.strip()
-            or os.getenv(
+            or _get_config(
+                "CUSTOM_ENDPOINT_DEFAULT_MODEL",
                 "OPENAI_COMPATIBLE_DEFAULT_MODEL",
-                "openai-compatible-default",
+                "gpt-4o-mini",
             ).strip()
         )
         endpoint = f"{base_url.rstrip('/')}/chat/completions"
@@ -49,17 +50,19 @@ class OpenAICompatibleProvider:
         except HTTPError as exc:
             detail = _read_error_body(exc)
             raise ProviderCallError(
-                f"OpenAI-compatible provider returned {exc.code}: {detail}"
+                f"Custom endpoint provider returned {exc.code}: {detail}"
             ) from exc
         except URLError as exc:
             raise ProviderCallError(
-                f"OpenAI-compatible provider request failed: {exc.reason}"
+                f"Custom endpoint provider request failed: {exc.reason}"
             ) from exc
         except TimeoutError as exc:
-            raise ProviderCallError("OpenAI-compatible provider request timed out.") from exc
+            raise ProviderCallError(
+                "Custom endpoint provider request timed out."
+            ) from exc
         except json.JSONDecodeError as exc:
             raise ProviderCallError(
-                "OpenAI-compatible provider returned invalid JSON."
+                "Custom endpoint provider returned invalid JSON."
             ) from exc
 
         response_text = _extract_response_text(body)
@@ -84,10 +87,26 @@ class OpenAICompatibleProvider:
         )
 
 
+def _get_config(
+    name: str,
+    fallback_name: str,
+    default: str | None = None,
+) -> str | None:
+    value = os.getenv(name)
+    if value is not None and value.strip():
+        return value
+
+    fallback_value = os.getenv(fallback_name)
+    if fallback_value is not None and fallback_value.strip():
+        return fallback_value
+
+    return default
+
+
 def _require_config(value: str | None, name: str) -> str:
     if value is None or not value.strip():
         raise ProviderConfigError(
-            f"{name} is required for provider 'openai_compatible'."
+            f"{name} is required for provider 'custom_endpoint'."
         )
 
     return value.strip()
@@ -97,13 +116,13 @@ def _extract_response_text(body: dict[str, Any]) -> str:
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ProviderCallError(
-            "OpenAI-compatible provider response did not include choices."
+            "Custom endpoint provider response did not include choices."
         )
 
     first_choice = choices[0]
     if not isinstance(first_choice, dict):
         raise ProviderCallError(
-            "OpenAI-compatible provider returned an invalid choice object."
+            "Custom endpoint provider returned an invalid choice object."
         )
 
     message = first_choice.get("message")
@@ -115,7 +134,7 @@ def _extract_response_text(body: dict[str, Any]) -> str:
         return text
 
     raise ProviderCallError(
-        "OpenAI-compatible provider response did not include message content."
+        "Custom endpoint provider response did not include message content."
     )
 
 

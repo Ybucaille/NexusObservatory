@@ -57,7 +57,7 @@ DEMO_RUNS: tuple[DemoRun, ...] = (
             "is draining, and send the request id if the error appears again."
         ),
         model_name="gpt-4o-mini",
-        provider="openai_compatible",
+        provider="custom_endpoint",
         status="success",
         latency_ms=642,
         input_tokens=19,
@@ -73,7 +73,7 @@ DEMO_RUNS: tuple[DemoRun, ...] = (
             "reduce batch size, inspect provider latency, and retry with backoff."
         ),
         model_name="llama3.1",
-        provider="openai_compatible",
+        provider="custom_endpoint",
         status="success",
         latency_ms=921,
         input_tokens=16,
@@ -90,7 +90,7 @@ DEMO_RUNS: tuple[DemoRun, ...] = (
             "trace events that explain the execution flow."
         ),
         model_name="gpt-4o-mini",
-        provider="openai_compatible",
+        provider="custom_endpoint",
         status="success",
         latency_ms=488,
         input_tokens=13,
@@ -103,14 +103,14 @@ DEMO_RUNS: tuple[DemoRun, ...] = (
         prompt="Explain why the prompt execution failed in plain English.",
         response=None,
         model_name="gpt-4o-mini",
-        provider="openai_compatible",
+        provider="custom_endpoint",
         status="error",
         latency_ms=1504,
         input_tokens=11,
         output_tokens=0,
         estimated_cost=0.0,
         error_message=(
-            "OpenAI-compatible provider returned 404: The requested model was not found."
+            "Custom endpoint provider returned 404: The requested model was not found."
         ),
         metadata={"scenario": "provider-error", "temperature": 0.7},
     ),
@@ -137,7 +137,7 @@ DEMO_RUNS: tuple[DemoRun, ...] = (
             "114. The run is within the expected latency range."
         ),
         model_name="llama3.1",
-        provider="openai_compatible",
+        provider="custom_endpoint",
         status="success",
         latency_ms=812,
         input_tokens=41,
