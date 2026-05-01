@@ -26,7 +26,7 @@ It is designed as a portfolio-grade product: a polished dashboard backed by real
 
 Nexus Observatory helps developers inspect AI executions in one place:
 
-- Execute prompts through a local mock provider or a custom OpenAI-compatible endpoint.
+- Execute prompts through a local mock provider or one or more custom OpenAI-compatible endpoints.
 - Persist AI executions as inspectable runs.
 - Track latency, token usage, provider, model, prompt, response and metadata.
 - Inspect individual runs with a trace timeline.
@@ -40,7 +40,7 @@ Nexus Observatory helps developers inspect AI executions in one place:
 - **Run detail view**: prompt, response, model/provider metadata, timestamps, token usage and structured metadata.
 - **Trace timeline**: execution steps such as request received, provider selected, provider call started, provider call finished and run stored.
 - **Prompt execution**: compact dashboard panel for running prompts and storing results.
-- **Model Lab**: compare one prompt across multiple targets with partial success handling.
+- **Model Lab**: compare one prompt across multiple targets and custom endpoint profiles with partial success handling.
 - **Provider Settings**: read-only provider readiness cards for `mock` and `custom_endpoint`.
 
 ## Stack
@@ -142,13 +142,55 @@ This can target OpenAI, Ollama, LM Studio, vLLM, LocalAI or another service that
 {CUSTOM_ENDPOINT_BASE_URL}/chat/completions
 ```
 
-Configure these variables in the backend environment.
+### Multi-endpoint mode
+
+Use `CUSTOM_ENDPOINTS_JSON` when you want Model Lab to compare OpenAI, vLLM, Ollama, LM Studio or other compatible endpoints in the same comparison.
+
+`CUSTOM_ENDPOINTS_JSON` is a JSON array of endpoint profiles:
+
+```json
+[
+  {
+    "id": "openai",
+    "label": "OpenAI",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "",
+    "default_model": "gpt-4o-mini"
+  },
+  {
+    "id": "vllm-local",
+    "label": "Local vLLM",
+    "base_url": "http://localhost:8001/v1",
+    "api_key": "",
+    "default_model": "llama3.1"
+  },
+  {
+    "id": "ollama",
+    "label": "Ollama",
+    "base_url": "http://localhost:11434/v1",
+    "api_key": "",
+    "default_model": "llama3.1"
+  }
+]
+```
+
+Shell example:
+
+```bash
+export CUSTOM_ENDPOINTS_JSON='[{"id":"openai","label":"OpenAI","base_url":"https://api.openai.com/v1","api_key":"","default_model":"gpt-4o-mini"},{"id":"vllm-local","label":"Local vLLM","base_url":"http://localhost:8001/v1","api_key":"","default_model":"llama3.1"},{"id":"ollama","label":"Ollama","base_url":"http://localhost:11434/v1","api_key":"","default_model":"llama3.1"}]'
+```
+
+For each profile, `base_url` should usually end at `/v1` when the provider uses OpenAI-style paths.
+
+### Single-endpoint mode
+
+If `CUSTOM_ENDPOINTS_JSON` is empty, the backend falls back to one default endpoint profile from the existing `CUSTOM_ENDPOINT_*` variables.
 
 OpenAI example:
 
 ```bash
 export CUSTOM_ENDPOINT_BASE_URL="https://api.openai.com/v1"
-export CUSTOM_ENDPOINT_API_KEY="your-api-key"
+export CUSTOM_ENDPOINT_API_KEY=""
 export CUSTOM_ENDPOINT_DEFAULT_MODEL="gpt-4o-mini"
 ```
 
@@ -156,7 +198,7 @@ Ollama example:
 
 ```bash
 export CUSTOM_ENDPOINT_BASE_URL="http://localhost:11434/v1"
-export CUSTOM_ENDPOINT_API_KEY="ollama"
+export CUSTOM_ENDPOINT_API_KEY=""
 export CUSTOM_ENDPOINT_DEFAULT_MODEL="llama3.1"
 ```
 
@@ -164,9 +206,28 @@ export CUSTOM_ENDPOINT_DEFAULT_MODEL="llama3.1"
 
 For compatibility with older local setups, `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY` and `OPENAI_COMPATIBLE_DEFAULT_MODEL` are still read as fallbacks when the `CUSTOM_ENDPOINT_*` variables are not set.
 
-API keys stay backend-side through environment variables. They are never stored in the database and are never exposed to the Next.js frontend.
+API keys stay backend-side. Environment profiles read keys from environment variables; Settings-managed profiles store metadata in SQLite and keep only a server-side secret reference when secret storage is enabled. Raw keys are never exposed to the Next.js frontend.
 
 The frontend only selects the provider/model and sends the prompt to the backend.
+
+### Settings-managed profiles
+
+Custom endpoint profiles can also be managed from the Settings page.
+
+Profile metadata is stored locally in SQLite. API keys are handled server-side and are never returned to the frontend.
+
+Secret storage defaults to `auto`: the backend tries OS keyring first, then uses an encrypted local fallback under the backend data directory when keyring is unavailable.
+
+An explicit insecure fallback exists only as an advanced local development last resort:
+
+```bash
+NEXUS_SECRET_STORE=insecure-development
+NEXUS_ALLOW_INSECURE_LOCAL_SECRETS=true
+```
+
+The insecure fallback is for local development only and should not be used with real credentials.
+
+Environment-based `CUSTOM_ENDPOINTS_JSON` and `CUSTOM_ENDPOINT_*` configuration still work as bootstrap/fallback config.
 
 ## Provider Status
 
@@ -176,7 +237,7 @@ The Settings page calls:
 GET /providers/status
 ```
 
-It reports whether each provider is available and configured. For custom endpoints, it only returns booleans such as `api_key_configured`; it never returns the API key value.
+It reports whether each provider is available and configured. For custom endpoints, it returns endpoint profile IDs, labels, default models and configuration booleans; it never returns API key values.
 
 ## Demo Flow
 
@@ -185,7 +246,7 @@ It reports whether each provider is available and configured. For custom endpoin
 3. Execute a mock prompt from the dashboard.
 4. Inspect the created run in the Runs page.
 5. View the trace timeline on the Run Detail page.
-6. Compare mock and custom endpoint providers in Model Lab.
+6. Compare mock and one or more custom endpoint profiles in Model Lab.
 7. Check provider status in Settings.
 
 ## Demo Data

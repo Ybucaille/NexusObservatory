@@ -8,10 +8,11 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app import database
-from app.database import init_database
+from app.database import database_connection, init_database
 from app.providers.base import ProviderConfigError
 from app.providers.custom_endpoint import CustomEndpointProvider
 from app.providers.registry import UnsupportedProviderError
+from app.schemas.endpoint_profile import EndpointProfileCreate, EndpointProfileUpdate
 from app.schemas.run import RunCreate
 from app.schemas.run import RunCompareRequest
 from app.schemas.run import RunCompareTarget
@@ -19,9 +20,18 @@ from app.schemas.run import RunExecuteRequest
 from app.schemas.trace_event import TraceEventCreate
 from app.routes.runs import execute_run_route
 from app.services.comparison import compare_runs
+from app.services.endpoint_profiles import (
+    create_endpoint_profile,
+    delete_endpoint_profile,
+    endpoint_profile_to_response,
+    get_endpoint_profile,
+    get_profile_api_key,
+    update_endpoint_profile,
+)
 from app.services.execution import execute_run
 from app.services.provider_status import get_provider_status
 from app.services.runs import create_run, get_run, list_runs
+from app.services.secrets import SecretStoreUnavailableError
 from app.services.traces import create_trace_event, list_trace_events
 from app.scripts.seed_demo_data import seed_demo_data
 
@@ -155,6 +165,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "",
                 "CUSTOM_ENDPOINT_API_KEY": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
@@ -203,6 +214,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "",
                 "CUSTOM_ENDPOINT_API_KEY": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
@@ -226,6 +238,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "",
                 "CUSTOM_ENDPOINT_API_KEY": "",
                 "OPENAI_COMPATIBLE_BASE_URL": "",
@@ -251,6 +264,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "",
                 "CUSTOM_ENDPOINT_API_KEY": "",
                 "CUSTOM_ENDPOINT_DEFAULT_MODEL": "",
@@ -271,11 +285,17 @@ class RunsServiceTests(unittest.TestCase):
         self.assertFalse(providers["custom_endpoint"].base_url_configured)
         self.assertFalse(providers["custom_endpoint"].api_key_configured)
         self.assertIsNone(providers["custom_endpoint"].default_model)
+        self.assertEqual(len(providers["custom_endpoint"].endpoint_profiles or []), 1)
+        self.assertEqual(
+            (providers["custom_endpoint"].endpoint_profiles or [])[0].id,
+            "default",
+        )
 
     def test_provider_status_reports_configured_custom_endpoint_without_secret_value(self) -> None:
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "http://provider.local/v1",
                 "CUSTOM_ENDPOINT_API_KEY": "secret-test-key",
                 "CUSTOM_ENDPOINT_DEFAULT_MODEL": "gpt-test",
@@ -292,7 +312,224 @@ class RunsServiceTests(unittest.TestCase):
         self.assertTrue(custom_endpoint_status.base_url_configured)
         self.assertTrue(custom_endpoint_status.api_key_configured)
         self.assertEqual(custom_endpoint_status.default_model, "gpt-test")
+        self.assertEqual(
+            (custom_endpoint_status.endpoint_profiles or [])[0].default_model,
+            "gpt-test",
+        )
         self.assertNotIn("secret-test-key", str(serialized))
+
+    def test_provider_status_reports_multiple_custom_endpoint_profiles_without_secrets(self) -> None:
+        endpoints_json = json.dumps(
+            [
+                {
+                    "id": "openai",
+                    "label": "OpenAI",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "openai-secret",
+                    "default_model": "gpt-4o-mini",
+                },
+                {
+                    "id": "vllm-local",
+                    "label": "Local vLLM",
+                    "base_url": "http://localhost:8001/v1",
+                    "api_key": "",
+                    "default_model": "llama3.1",
+                },
+            ]
+        )
+
+        with patch.dict(
+            "os.environ",
+            {"CUSTOM_ENDPOINTS_JSON": endpoints_json},
+            clear=False,
+        ):
+            status = get_provider_status()
+
+        custom_endpoint_status = {
+            provider.name: provider for provider in status.providers
+        }["custom_endpoint"]
+        serialized = custom_endpoint_status.model_dump()
+        profiles = custom_endpoint_status.endpoint_profiles or []
+
+        self.assertTrue(custom_endpoint_status.configured)
+        self.assertEqual(len(profiles), 2)
+        self.assertEqual(profiles[0].id, "openai")
+        self.assertEqual(profiles[0].label, "OpenAI")
+        self.assertTrue(profiles[0].configured)
+        self.assertFalse(profiles[1].configured)
+        self.assertNotIn("openai-secret", str(serialized))
+
+    def test_endpoint_profile_crud_uses_secret_reference_and_redacts_api_key(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "NEXUS_SECRET_STORE": "encrypted-local",
+            },
+            clear=False,
+        ):
+            profile = create_endpoint_profile(
+                EndpointProfileCreate(
+                    id="openai-db",
+                    label="OpenAI DB",
+                    base_url="https://api.openai.com/v1",
+                    default_model="gpt-4o-mini",
+                    api_key="db-secret-key",
+                )
+            )
+            response = endpoint_profile_to_response(profile)
+
+            with database_connection() as connection:
+                row = connection.execute(
+                    "SELECT secret_ref FROM endpoint_profiles WHERE id = ?",
+                    ("openai-db",),
+                ).fetchone()
+
+            self.assertIsNotNone(row)
+            self.assertIn("openai-db", row["secret_ref"])
+            self.assertNotEqual(row["secret_ref"], "db-secret-key")
+            secret_path = Path(self.temp_dir.name) / ".nexus_secrets.encrypted.json"
+            key_path = Path(self.temp_dir.name) / ".nexus_secret.key"
+            self.assertTrue(secret_path.exists())
+            self.assertTrue(key_path.exists())
+            self.assertNotIn(
+                "db-secret-key",
+                secret_path.read_text(encoding="utf-8"),
+            )
+            self.assertTrue(response.api_key_configured)
+            self.assertNotIn("db-secret-key", str(response.model_dump()))
+
+            updated = update_endpoint_profile(
+                "openai-db",
+                EndpointProfileUpdate(label="OpenAI Updated"),
+            )
+            self.assertEqual(updated.label, "OpenAI Updated")
+            self.assertEqual(get_profile_api_key(updated), "db-secret-key")
+
+            replaced = update_endpoint_profile(
+                "openai-db",
+                EndpointProfileUpdate(api_key="replacement-secret"),
+            )
+            self.assertEqual(get_profile_api_key(replaced), "replacement-secret")
+
+            cleared = update_endpoint_profile(
+                "openai-db",
+                EndpointProfileUpdate(clear_api_key=True),
+            )
+            self.assertIsNone(cleared.secret_ref)
+            self.assertFalse(endpoint_profile_to_response(cleared).api_key_configured)
+
+            delete_endpoint_profile("openai-db")
+            self.assertIsNone(get_endpoint_profile("openai-db"))
+
+    def test_provider_status_includes_db_profiles_without_raw_secret(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "CUSTOM_ENDPOINTS_JSON": "",
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
+                "NEXUS_SECRET_STORE": "encrypted-local",
+            },
+            clear=False,
+        ):
+            create_endpoint_profile(
+                EndpointProfileCreate(
+                    id="db-local",
+                    label="DB Local",
+                    base_url="http://localhost:8001/v1",
+                    default_model="llama3.1",
+                    api_key="local-secret",
+                )
+            )
+            status = get_provider_status()
+
+        custom_endpoint_status = {
+            provider.name: provider for provider in status.providers
+        }["custom_endpoint"]
+        serialized = custom_endpoint_status.model_dump()
+        profile_statuses = custom_endpoint_status.endpoint_profiles or []
+        db_profile_status = {
+            profile.id: profile for profile in profile_statuses
+        }["db-local"]
+
+        self.assertTrue(db_profile_status.api_key_configured)
+        self.assertTrue(db_profile_status.configured)
+        self.assertNotIn("local-secret", str(serialized))
+
+    def test_custom_endpoint_provider_selects_database_endpoint_profile(self) -> None:
+        provider = CustomEndpointProvider()
+        response_body = {
+            "model": "db-model",
+            "choices": [{"message": {"content": "DB profile response."}}],
+            "usage": {},
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "CUSTOM_ENDPOINTS_JSON": "",
+                "CUSTOM_ENDPOINT_BASE_URL": "",
+                "CUSTOM_ENDPOINT_API_KEY": "",
+                "NEXUS_SECRET_STORE": "encrypted-local",
+            },
+            clear=False,
+        ):
+            create_endpoint_profile(
+                EndpointProfileCreate(
+                    id="db-vllm",
+                    label="DB vLLM",
+                    base_url="http://db-vllm.local/v1",
+                    default_model="llama3.1",
+                    api_key="db-vllm-secret",
+                )
+            )
+            with patch(
+                "app.providers.custom_endpoint.urlopen",
+                return_value=_FakeResponse(response_body),
+            ) as urlopen_mock:
+                result = provider.generate(
+                    prompt="Use DB profile.",
+                    model="",
+                    endpoint_id="db-vllm",
+                )
+
+        request = urlopen_mock.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "http://db-vllm.local/v1/chat/completions")
+        self.assertEqual(payload["model"], "llama3.1")
+        self.assertEqual(result.response, "DB profile response.")
+        self.assertEqual(result.metadata["endpoint_id"], "db-vllm")
+        self.assertEqual(result.metadata["endpoint_label"], "DB vLLM")
+
+    def test_auto_secret_store_uses_encrypted_local_without_env_flags(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "NEXUS_SECRET_STORE": "",
+                "NEXUS_ALLOW_INSECURE_LOCAL_SECRETS": "",
+            },
+            clear=False,
+        ), patch(
+            "app.services.secrets.KeyringSecretStore",
+            side_effect=SecretStoreUnavailableError("No keyring in test."),
+        ):
+            profile = create_endpoint_profile(
+                EndpointProfileCreate(
+                    id="auto-local",
+                    label="Auto Local",
+                    base_url="http://auto.local/v1",
+                    default_model="auto-model",
+                    api_key="auto-secret",
+                )
+            )
+
+            secret_path = Path(self.temp_dir.name) / ".nexus_secrets.encrypted.json"
+            self.assertTrue(secret_path.exists())
+            self.assertNotIn(
+                "auto-secret",
+                secret_path.read_text(encoding="utf-8"),
+            )
+            self.assertEqual(get_profile_api_key(profile), "auto-secret")
 
     def test_seed_demo_data_replaces_only_demo_runs_and_creates_traces(self) -> None:
         user_run = create_run(
@@ -354,6 +591,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "http://provider.local/v1",
                 "CUSTOM_ENDPOINT_API_KEY": "test-key",
                 "CUSTOM_ENDPOINT_DEFAULT_MODEL": "default-model",
@@ -375,6 +613,94 @@ class RunsServiceTests(unittest.TestCase):
         self.assertEqual(result.input_tokens, 4)
         self.assertEqual(result.output_tokens, 3)
         self.assertEqual(result.total_tokens, 7)
+        self.assertEqual(result.metadata["endpoint_id"], "default")
+        self.assertEqual(result.metadata["endpoint_label"], "Default custom endpoint")
+
+    def test_custom_endpoint_provider_selects_configured_endpoint_id(self) -> None:
+        provider = CustomEndpointProvider()
+        response_body = {
+            "model": "vllm-returned-model",
+            "choices": [{"message": {"content": "Endpoint selected."}}],
+            "usage": {},
+        }
+        endpoints_json = json.dumps(
+            [
+                {
+                    "id": "openai",
+                    "label": "OpenAI",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "openai-key",
+                    "default_model": "gpt-4o-mini",
+                },
+                {
+                    "id": "vllm",
+                    "label": "Local vLLM",
+                    "base_url": "http://vllm.local/v1",
+                    "api_key": "vllm-key",
+                    "default_model": "llama3.1",
+                },
+            ]
+        )
+
+        with patch.dict(
+            "os.environ",
+            {"CUSTOM_ENDPOINTS_JSON": endpoints_json},
+            clear=False,
+        ), patch(
+            "app.providers.custom_endpoint.urlopen",
+            return_value=_FakeResponse(response_body),
+        ) as urlopen_mock:
+            result = provider.generate(
+                prompt="Say hello.",
+                model="",
+                endpoint_id="vllm",
+            )
+
+        request = urlopen_mock.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "http://vllm.local/v1/chat/completions")
+        self.assertEqual(payload["model"], "llama3.1")
+        self.assertEqual(result.response, "Endpoint selected.")
+        self.assertEqual(result.metadata["endpoint_id"], "vllm")
+        self.assertEqual(result.metadata["endpoint_label"], "Local vLLM")
+
+    def test_execute_run_stores_custom_endpoint_metadata(self) -> None:
+        response_body = {
+            "model": "selected-model",
+            "choices": [{"message": {"content": "Stored endpoint metadata."}}],
+            "usage": {},
+        }
+        endpoints_json = json.dumps(
+            [
+                {
+                    "id": "openai",
+                    "label": "OpenAI",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "openai-key",
+                    "default_model": "gpt-4o-mini",
+                }
+            ]
+        )
+
+        with patch.dict(
+            "os.environ",
+            {"CUSTOM_ENDPOINTS_JSON": endpoints_json},
+            clear=False,
+        ), patch(
+            "app.providers.custom_endpoint.urlopen",
+            return_value=_FakeResponse(response_body),
+        ):
+            run = execute_run(
+                RunExecuteRequest(
+                    prompt="Use OpenAI.",
+                    provider="custom_endpoint",
+                    model="",
+                    endpoint_id="openai",
+                )
+            )
+
+        self.assertEqual(run.metadata["endpoint_id"], "openai")
+        self.assertEqual(run.metadata["endpoint_label"], "OpenAI")
 
     def test_custom_endpoint_provider_supports_old_env_fallback(self) -> None:
         provider = CustomEndpointProvider()
@@ -387,6 +713,7 @@ class RunsServiceTests(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
+                "CUSTOM_ENDPOINTS_JSON": "",
                 "CUSTOM_ENDPOINT_BASE_URL": "",
                 "CUSTOM_ENDPOINT_API_KEY": "",
                 "CUSTOM_ENDPOINT_DEFAULT_MODEL": "",

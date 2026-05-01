@@ -31,6 +31,7 @@ class RunExecuteRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
     provider: str = Field(default="mock", min_length=1)
     model: str = ""
+    endpoint_id: str | None = None
 
 
 class RunResponse(RunCreate):
@@ -44,6 +45,7 @@ class RunResponse(RunCreate):
 class RunCompareTarget(BaseModel):
     provider: str = Field(..., min_length=1)
     model: str = ""
+    endpoint_id: str | None = None
 
 
 class RunCompareRequest(BaseModel):
@@ -55,6 +57,8 @@ class RunCompareItem(BaseModel):
     provider: str
     model: str
     status: RunStatus
+    endpoint_id: str | None = None
+    endpoint_label: str | None = None
     run: RunResponse | None = None
     error_message: str | None = None
 

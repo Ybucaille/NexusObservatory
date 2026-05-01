@@ -1,23 +1,38 @@
-import os
-
-from app.schemas.provider import ProviderStatus, ProviderStatusResponse
+from app.providers.custom_endpoint_config import list_custom_endpoint_profiles
+from app.schemas.provider import (
+    CustomEndpointProfileStatus,
+    ProviderStatus,
+    ProviderStatusResponse,
+)
 
 
 def get_provider_status() -> ProviderStatusResponse:
-    base_url_configured = _is_configured(
-        "CUSTOM_ENDPOINT_BASE_URL",
-        "OPENAI_COMPATIBLE_BASE_URL",
+    endpoint_profiles = [
+        CustomEndpointProfileStatus(
+            id=profile.id,
+            label=profile.label,
+            configured=profile.configured,
+            base_url_configured=profile.base_url_configured,
+            api_key_configured=profile.api_key_configured,
+            default_model=profile.default_model,
+        )
+        for profile in list_custom_endpoint_profiles()
+    ]
+    configured_profiles = [
+        profile for profile in endpoint_profiles if profile.configured
+    ]
+    default_model = (
+        configured_profiles[0].default_model
+        if configured_profiles
+        else endpoint_profiles[0].default_model
+        if endpoint_profiles
+        else None
     )
-    api_key_configured = _is_configured(
-        "CUSTOM_ENDPOINT_API_KEY",
-        "OPENAI_COMPATIBLE_API_KEY",
+    base_url_configured = any(
+        profile.base_url_configured for profile in endpoint_profiles
     )
-    default_model = _get_config(
-        "CUSTOM_ENDPOINT_DEFAULT_MODEL",
-        "OPENAI_COMPATIBLE_DEFAULT_MODEL",
-    )
-    normalized_default_model = (
-        default_model.strip() if default_model and default_model.strip() else None
+    api_key_configured = any(
+        profile.api_key_configured for profile in endpoint_profiles
     )
 
     return ProviderStatusResponse(
@@ -31,26 +46,11 @@ def get_provider_status() -> ProviderStatusResponse:
             ProviderStatus(
                 name="custom_endpoint",
                 available=True,
-                configured=base_url_configured and api_key_configured,
+                configured=any(profile.configured for profile in endpoint_profiles),
                 base_url_configured=base_url_configured,
                 api_key_configured=api_key_configured,
-                default_model=normalized_default_model,
+                default_model=default_model,
+                endpoint_profiles=endpoint_profiles,
             ),
         ]
     )
-
-
-def _is_configured(name: str, fallback_name: str) -> bool:
-    return _get_config(name, fallback_name) is not None
-
-
-def _get_config(name: str, fallback_name: str) -> str | None:
-    value = os.getenv(name)
-    if value is not None and value.strip():
-        return value
-
-    fallback_value = os.getenv(fallback_name)
-    if fallback_value is not None and fallback_value.strip():
-        return fallback_value
-
-    return None

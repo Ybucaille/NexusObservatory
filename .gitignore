@@ -9,6 +9,9 @@ __pycache__/
 *.pyc
 *.db
 *.db-*
+.nexus_secrets.local.json
+.nexus_secrets.encrypted.json
+.nexus_secret.key
 node_modules/
 dist/
 build/

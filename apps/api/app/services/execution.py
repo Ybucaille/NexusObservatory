@@ -19,6 +19,7 @@ def execute_run(payload: RunExecuteRequest) -> Run:
             metadata={
                 "provider": payload.provider,
                 "model": payload.model,
+                "endpoint_id": payload.endpoint_id,
                 "prompt_length": len(payload.prompt),
             },
         )
@@ -32,6 +33,7 @@ def execute_run(payload: RunExecuteRequest) -> Run:
             metadata={
                 "provider": provider.name,
                 "requested_model": payload.model,
+                "endpoint_id": payload.endpoint_id,
             },
         )
     )
@@ -44,11 +46,16 @@ def execute_run(payload: RunExecuteRequest) -> Run:
             metadata={
                 "provider": provider.name,
                 "model": payload.model,
+                "endpoint_id": payload.endpoint_id,
             },
         )
     )
     started_at = perf_counter()
-    result = provider.generate(prompt=payload.prompt, model=payload.model)
+    result = provider.generate(
+        prompt=payload.prompt,
+        model=payload.model,
+        endpoint_id=payload.endpoint_id,
+    )
     latency_ms = round((perf_counter() - started_at) * 1000)
     model_name = result.model_name or payload.model
     pending_trace_events.append(

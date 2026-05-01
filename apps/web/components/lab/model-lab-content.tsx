@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import {
   compareRuns,
+  fetchProviderStatus,
   type CompareResult,
   type CompareTarget,
+  type CustomEndpointProfileStatus,
   type ExecuteRunPayload,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/runs/status-badge";
@@ -28,21 +30,72 @@ type SubmitState =
 
 const defaultTargets: TargetDraft[] = [
   { id: "mock-default", provider: "mock", model: "mock-model" },
-  {
-    id: "custom-endpoint-default",
-    provider: "custom_endpoint",
-    model: "gpt-4o-mini",
-  },
 ];
 
 export function ModelLabContent() {
   const [prompt, setPrompt] = useState("");
   const [targets, setTargets] = useState<TargetDraft[]>(defaultTargets);
+  const [endpointProfiles, setEndpointProfiles] = useState<
+    CustomEndpointProfileStatus[]
+  >([]);
+  const [providerStatusError, setProviderStatusError] = useState<string | null>(
+    null,
+  );
+  const [hasInitializedTargets, setHasInitializedTargets] = useState(false);
   const [state, setState] = useState<SubmitState>({
     status: "idle",
     error: null,
     results: [],
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadProviderStatus() {
+      try {
+        const status = await fetchProviderStatus(controller.signal);
+        const customEndpointStatus = status.providers.find(
+          (providerStatus) => providerStatus.name === "custom_endpoint",
+        );
+        const profiles = customEndpointStatus?.endpoint_profiles ?? [];
+        const configuredProfile = profiles.find((profile) => profile.configured);
+        setEndpointProfiles(profiles);
+        setProviderStatusError(null);
+
+        if (!hasInitializedTargets) {
+          setTargets(
+            configuredProfile
+              ? [
+                  defaultTargets[0],
+                  {
+                    id: `custom-endpoint-${configuredProfile.id}`,
+                    provider: "custom_endpoint",
+                    model: getDefaultModel("custom_endpoint", configuredProfile),
+                    endpoint_id: configuredProfile.id,
+                  },
+                ]
+              : defaultTargets,
+          );
+          setHasInitializedTargets(true);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setProviderStatusError(
+          error instanceof Error
+            ? error.message
+            : "Provider status could not be loaded.",
+        );
+        setHasInitializedTargets(true);
+      }
+    }
+
+    void loadProviderStatus();
+
+    return () => controller.abort();
+  }, [hasInitializedTargets]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +104,14 @@ export function ModelLabContent() {
     const normalizedTargets = targets
       .map((target) => ({
         provider: target.provider,
-        model: target.model.trim() || getDefaultModel(target.provider),
+        model:
+          target.model.trim() ||
+          getDefaultModel(
+            target.provider,
+            getEndpointProfile(endpointProfiles, target.endpoint_id),
+          ),
+        endpoint_id:
+          target.provider === "custom_endpoint" ? target.endpoint_id : null,
       }))
       .filter((target) => target.provider);
 
@@ -83,7 +143,12 @@ export function ModelLabContent() {
       setTargets((currentTargets) =>
         currentTargets.map((target) => ({
           ...target,
-          model: target.model.trim() || getDefaultModel(target.provider),
+          model:
+            target.model.trim() ||
+            getDefaultModel(
+              target.provider,
+              getEndpointProfile(endpointProfiles, target.endpoint_id),
+            ),
         })),
       );
       setState({
@@ -151,9 +216,14 @@ export function ModelLabContent() {
                 </p>
                 <p className="mt-1 text-xs leading-5 text-observatory-muted">
                   {hasCustomEndpointTarget
-                    ? "Custom endpoint targets require backend environment config. They use an OpenAI-compatible chat completions API, and API keys stay server-side."
+                    ? "Custom endpoint targets use backend endpoint profiles from an OpenAI-compatible chat completions API. API keys stay server-side."
                     : "Mock targets run locally and do not require backend provider configuration."}
                 </p>
+                {providerStatusError ? (
+                  <p className="mt-1 text-xs leading-5 text-observatory-amber">
+                    Endpoint profiles could not be loaded: {providerStatusError}
+                  </p>
+                ) : null}
               </div>
               <button
                 className="rounded-2xl border border-observatory-line bg-observatory-panelSoft px-4 py-2 font-mono text-xs uppercase tracking-[0.16em] text-observatory-muted transition hover:border-observatory-cyan/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -168,58 +238,118 @@ export function ModelLabContent() {
             <div className="space-y-3">
               {targets.map((target, index) => (
                 <div
-                  className="grid gap-3 rounded-2xl border border-observatory-line bg-observatory-ink/45 p-4 md:grid-cols-[minmax(0,12rem)_1fr_auto] md:items-end"
+                  className="rounded-2xl border border-observatory-line bg-observatory-ink/45 p-4"
                   key={target.id}
                 >
-                  <label className="block">
-                    <span className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-muted">
-                      Provider
-                    </span>
-                    <select
-                      className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition focus:border-observatory-cyan/60"
-                      disabled={isLoading}
-                      onChange={(event) =>
-                        updateTargetProvider(
-                          target.id,
-                          event.target.value as ExecuteRunPayload["provider"],
-                        )
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-cyan">
+                        Target {index + 1}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-observatory-muted">
+                        Choose provider, endpoint profile and model separately.
+                      </p>
+                    </div>
+                    <button
+                      className="rounded-2xl border border-red-400/25 bg-red-400/5 px-4 py-2.5 font-mono text-xs uppercase tracking-[0.16em] text-red-100/80 transition hover:bg-red-400/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isLoading || targets.length === 1}
+                      onClick={() => removeTarget(target.id)}
+                      title={
+                        targets.length === 1
+                          ? "At least one target is required."
+                          : `Remove target ${index + 1}`
                       }
-                      value={target.provider}
+                      type="button"
                     >
-                      <option value="mock">mock</option>
-                      <option value="custom_endpoint">Custom endpoint</option>
-                    </select>
-                  </label>
+                      Remove
+                    </button>
+                  </div>
 
-                  <label className="block min-w-0">
-                    <span className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-muted">
-                      Model
-                    </span>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition placeholder:text-observatory-muted/60 focus:border-observatory-cyan/60"
-                      disabled={isLoading}
-                      onChange={(event) =>
-                        updateTargetModel(target.id, event.target.value)
-                      }
-                      placeholder={getDefaultModel(target.provider)}
-                      title={target.model}
-                      value={target.model}
-                    />
-                  </label>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                    <label className="block">
+                      <span className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-muted">
+                        Provider
+                      </span>
+                      <select
+                        className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition focus:border-observatory-cyan/60"
+                        disabled={isLoading}
+                        onChange={(event) =>
+                          updateTargetProvider(
+                            target.id,
+                            event.target.value as ExecuteRunPayload["provider"],
+                          )
+                        }
+                        value={target.provider}
+                      >
+                        <option value="mock">mock</option>
+                        <option value="custom_endpoint">Custom endpoint</option>
+                      </select>
+                    </label>
 
-                  <button
-                    className="rounded-2xl border border-red-400/25 bg-red-400/5 px-4 py-3 font-mono text-xs uppercase tracking-[0.16em] text-red-100/80 transition hover:bg-red-400/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isLoading || targets.length === 1}
-                    onClick={() => removeTarget(target.id)}
-                    title={
-                      targets.length === 1
-                        ? "At least one target is required."
-                        : `Remove target ${index + 1}`
-                    }
-                    type="button"
-                  >
-                    Remove
-                  </button>
+                    {target.provider === "custom_endpoint" ? (
+                      <label className="block min-w-0">
+                        <span className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-muted">
+                          Endpoint profile
+                        </span>
+                        <select
+                          className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition focus:border-observatory-cyan/60"
+                          disabled={isLoading || endpointProfiles.length === 0}
+                          onChange={(event) =>
+                            updateTargetEndpoint(target.id, event.target.value)
+                          }
+                          value={target.endpoint_id ?? ""}
+                        >
+                          {endpointProfiles.length === 0 ? (
+                            <option value="">Default endpoint</option>
+                          ) : (
+                            endpointProfiles.map((endpointProfile) => (
+                              <option
+                                key={endpointProfile.id}
+                                value={endpointProfile.id}
+                              >
+                                {endpointProfile.label}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <p
+                          className="mt-2 truncate text-xs text-observatory-muted"
+                          title={target.endpoint_id ?? "default endpoint"}
+                        >
+                          {target.endpoint_id
+                            ? `Profile ID: ${target.endpoint_id}`
+                            : "Uses the backend default endpoint profile."}
+                        </p>
+                      </label>
+                    ) : null}
+
+                    <label className="block min-w-0">
+                      <span className="font-mono text-xs uppercase tracking-[0.18em] text-observatory-muted">
+                        Model
+                      </span>
+                      <input
+                        className="mt-2 w-full rounded-2xl border border-observatory-line bg-observatory-ink/80 px-4 py-3 text-sm text-observatory-text outline-none transition placeholder:text-observatory-muted/60 focus:border-observatory-cyan/60"
+                        disabled={isLoading}
+                        onChange={(event) =>
+                          updateTargetModel(target.id, event.target.value)
+                        }
+                        placeholder={getDefaultModel(
+                          target.provider,
+                          getEndpointProfile(
+                            endpointProfiles,
+                            target.endpoint_id,
+                          ),
+                        )}
+                        title={target.model}
+                        value={target.model}
+                      />
+                      <p className="mt-2 text-xs text-observatory-muted">
+                        {target.provider === "mock"
+                          ? "Local mock model; no endpoint profile required."
+                          : "Editable model for the selected endpoint profile."}
+                      </p>
+                    </label>
+                  </div>
                 </div>
               ))}
             </div>
@@ -228,7 +358,7 @@ export function ModelLabContent() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-5 text-observatory-muted">
               {hasCustomEndpointTarget
-                ? "Replace `gpt-4o-mini` with any model supported by your custom endpoint, such as OpenAI, Ollama, LM Studio, vLLM or LocalAI. Missing config or unavailable models return as target-level errors."
+                ? "Select a custom endpoint profile, then use any model supported by that backend. Missing config or unavailable models return as target-level errors."
                 : "Mock comparisons are fully local and useful for testing Model Lab flow without provider credentials."}
             </p>
             <button
@@ -259,6 +389,7 @@ export function ModelLabContent() {
         id: `target-${Date.now()}-${currentTargets.length}`,
         provider: "mock",
         model: "mock-model",
+        endpoint_id: null,
       },
     ]);
   }
@@ -276,7 +407,33 @@ export function ModelLabContent() {
     setTargets((currentTargets) =>
       currentTargets.map((target) =>
         target.id === targetId
-          ? { ...target, provider, model: getDefaultModel(provider) }
+          ? {
+              ...target,
+              provider,
+              endpoint_id:
+                provider === "custom_endpoint"
+                  ? getDefaultEndpoint(endpointProfiles)?.id ?? null
+                  : null,
+              model: getDefaultModel(
+                provider,
+                getDefaultEndpoint(endpointProfiles),
+              ),
+            }
+          : target,
+      ),
+    );
+  }
+
+  function updateTargetEndpoint(targetId: string, endpointId: string) {
+    const endpointProfile = getEndpointProfile(endpointProfiles, endpointId);
+    setTargets((currentTargets) =>
+      currentTargets.map((target) =>
+        target.id === targetId
+          ? {
+              ...target,
+              endpoint_id: endpointId || null,
+              model: getDefaultModel("custom_endpoint", endpointProfile),
+            }
           : target,
       ),
     );
@@ -351,6 +508,11 @@ function ResultCard({
   const model = run?.model_name || result.model || "default";
   const provider = run?.provider || result.provider;
   const providerLabel = formatProviderLabel(provider);
+  const endpointLabel =
+    stringMetadata(run?.metadata, "endpoint_label") || result.endpoint_label;
+  const targetTitle = endpointLabel
+    ? `${providerLabel} (${endpointLabel}) / ${model}`
+    : `${providerLabel} / ${model}`;
 
   async function handleCopyResponse() {
     if (!run?.response) {
@@ -371,9 +533,9 @@ function ResultCard({
           </p>
           <h3
             className="mt-2 truncate text-lg font-semibold tracking-tight"
-            title={`${providerLabel} / ${model}`}
+            title={targetTitle}
           >
-            {providerLabel} / {model}
+            {targetTitle}
           </h3>
         </div>
         <StatusBadge status={result.status} />
@@ -443,8 +605,41 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getDefaultModel(provider: ExecuteRunPayload["provider"]): string {
-  return provider === "mock" ? "mock-model" : "gpt-4o-mini";
+function getDefaultModel(
+  provider: ExecuteRunPayload["provider"],
+  endpointProfile?: CustomEndpointProfileStatus,
+): string {
+  if (provider === "mock") {
+    return "mock-model";
+  }
+
+  return endpointProfile?.default_model || "gpt-4o-mini";
+}
+
+function getDefaultEndpoint(
+  endpointProfiles: CustomEndpointProfileStatus[],
+): CustomEndpointProfileStatus | undefined {
+  return (
+    endpointProfiles.find((endpointProfile) => endpointProfile.configured) ||
+    endpointProfiles[0]
+  );
+}
+
+function getEndpointProfile(
+  endpointProfiles: CustomEndpointProfileStatus[],
+  endpointId?: string | null,
+): CustomEndpointProfileStatus | undefined {
+  return endpointProfiles.find(
+    (endpointProfile) => endpointProfile.id === endpointId,
+  );
+}
+
+function stringMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" ? value : null;
 }
 
 async function copyText(value: string) {

@@ -59,4 +59,18 @@ def init_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS endpoint_profiles (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                default_model TEXT,
+                enabled INTEGER NOT NULL,
+                secret_ref TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
         connection.commit()

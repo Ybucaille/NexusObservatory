@@ -15,7 +15,12 @@ class ProviderResult:
 class Provider(Protocol):
     name: str
 
-    def generate(self, prompt: str, model: str) -> ProviderResult:
+    def generate(
+        self,
+        prompt: str,
+        model: str,
+        endpoint_id: str | None = None,
+    ) -> ProviderResult:
         pass
 
 

@@ -4,7 +4,12 @@ from app.providers.base import ProviderResult
 class MockProvider:
     name = "mock"
 
-    def generate(self, prompt: str, model: str) -> ProviderResult:
+    def generate(
+        self,
+        prompt: str,
+        model: str,
+        endpoint_id: str | None = None,
+    ) -> ProviderResult:
         selected_model = model.strip() or "mock-model"
         normalized_prompt = " ".join(prompt.split())
         response = (
