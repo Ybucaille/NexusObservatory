@@ -9,6 +9,7 @@ It is designed as a portfolio-grade product: a polished dashboard backed by real
 ### Dashboard
 
 ![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](docs/screenshots/dashboard2.png)
 
 ### Run Detail & Trace Timeline
 
@@ -21,6 +22,7 @@ It is designed as a portfolio-grade product: a polished dashboard backed by real
 ### Provider Settings
 
 ![Provider Settings](docs/screenshots/settings.png)
+![Provider Settings](docs/screenshots/settings2.png)
 
 ## What It Does
 
